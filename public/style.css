@@ -334,10 +334,59 @@ h2 {
   padding: 40px;
 }
 
-.heart-loader img {
-  width: 100px;
-  height: 100px;
+.heart-loader {
+  --progress: 0%;
+  position: relative;
+  width: 112px;
+  height: 112px;
+  margin: 0 auto;
   animation: beat 0.8s ease-in-out infinite;
+}
+
+.heart-progress-base,
+.heart-progress-fill img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.heart-progress-base {
+  filter: grayscale(1) brightness(0.35) drop-shadow(0 0 12px rgba(255, 42, 77, 0.2));
+  opacity: 0.65;
+}
+
+.heart-progress-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--progress);
+  overflow: hidden;
+  transition: height 0.28s ease;
+  filter: drop-shadow(0 0 22px rgba(255, 42, 77, 0.75));
+}
+
+.heart-progress-fill img {
+  bottom: 0;
+  top: auto;
+}
+
+.heart-progress-percent {
+  position: absolute;
+  left: 50%;
+  bottom: -12px;
+  transform: translateX(-50%);
+  background: #0a0a0a;
+  border: 1px solid #ff2a4d;
+  border-radius: 999px;
+  color: #fff;
+  min-width: 52px;
+  padding: 4px 8px;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 1px;
+  box-shadow: 0 0 14px rgba(255, 42, 77, 0.28);
 }
 
 @keyframes beat {
@@ -346,9 +395,11 @@ h2 {
 }
 
 .loading p {
-  margin-top: 20px;
+  margin-top: 34px;
   color: #ff2a4d;
   font-size: 1.1rem;
+  min-height: 1.4em;
+  transition: opacity 0.18s;
 }
 
 .result {

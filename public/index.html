@@ -195,8 +195,12 @@
     </div>
 
     <section id="loading" class="loading hidden">
-      <div class="heart-loader">
-        <img src="logo.svg" alt="" />
+      <div class="heart-loader" id="heartLoader" aria-label="Progresso do processamento">
+        <img class="heart-progress-base" src="logo.svg" alt="" />
+        <div class="heart-progress-fill" id="heartProgressFill">
+          <img src="logo.svg" alt="" />
+        </div>
+        <span id="heartProgressPercent" class="heart-progress-percent">0%</span>
       </div>
       <p id="loadingText">Chaurisbrando seu PDF...</p>
     </section>

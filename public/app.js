@@ -6,6 +6,8 @@ const compressBtn = document.getElementById('compressBtn');
 const compressPaperSize = document.getElementById('compressPaperSize');
 const loadingEl = document.getElementById('loading');
 const loadingText = document.getElementById('loadingText');
+const heartLoader = document.getElementById('heartLoader');
+const heartProgressPercent = document.getElementById('heartProgressPercent');
 const resultEl = document.getElementById('result');
 const resultInfo = document.getElementById('resultInfo');
 const downloadBtn = document.getElementById('downloadBtn');
@@ -22,6 +24,7 @@ const mergePaperSize = document.getElementById('mergePaperSize');
 let selectedFile = null;
 let mergeFiles = [];
 let draggedMergeIndex = null;
+let loadingProgressTimer = null;
 
 const COMPRESS_PHRASES = [
   'Espreme até o talo',
@@ -38,6 +41,23 @@ const MERGE_PHRASES = [
   'Não precisa tá perto pra tá junto...s2',
   'Bate com limão e gelo'
 ];
+
+const LOADING_MESSAGES = {
+  compress: [
+    'Mandando os megabytes fazerem dieta...',
+    'Negociando com pixels teimosos...',
+    'Colocando o PDF numa roupa mais justa...',
+    'Tirando o excesso sem chamar atenção...',
+    'Convencendo o arquivo a ocupar menos espaço...'
+  ],
+  merge: [
+    'Chamando os PDFs para uma reunião estranha...',
+    'Alinhando as páginas no pacto final...',
+    'Misturando tudo sem derrubar no chão...',
+    'Fazendo os arquivos aceitarem a convivência...',
+    'Juntando as tretas num documento só...'
+  ]
+};
 
 function rotatePhrase(el, list) {
   if (!el) return;
@@ -66,6 +86,50 @@ function showError(msg) {
   errorBox.textContent = msg;
   errorBox.classList.remove('hidden');
   setTimeout(() => errorBox.classList.add('hidden'), 5000);
+}
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function setLoadingProgress(value) {
+  const progress = Math.max(0, Math.min(100, Math.round(value)));
+  if (heartLoader) heartLoader.style.setProperty('--progress', `${progress}%`);
+  if (heartProgressPercent) heartProgressPercent.textContent = `${progress}%`;
+}
+
+function startLoading(kind) {
+  const messages = LOADING_MESSAGES[kind] || LOADING_MESSAGES.compress;
+  let progress = 0;
+  let messageIndex = Math.floor(Math.random() * messages.length);
+
+  clearInterval(loadingProgressTimer);
+  setLoadingProgress(0);
+  loadingText.textContent = messages[messageIndex];
+  loadingEl.classList.remove('hidden');
+
+  loadingProgressTimer = setInterval(() => {
+    progress = Math.min(94, progress + Math.random() * 8 + 2);
+    setLoadingProgress(progress);
+
+    if (Math.random() > 0.58) {
+      messageIndex = (messageIndex + 1) % messages.length;
+      loadingText.style.opacity = '0';
+      setTimeout(() => {
+        loadingText.textContent = messages[messageIndex];
+        loadingText.style.opacity = '1';
+      }, 180);
+    }
+  }, 520);
+}
+
+function stopLoading(done = false) {
+  clearInterval(loadingProgressTimer);
+  loadingProgressTimer = null;
+  if (done) {
+    setLoadingProgress(100);
+    loadingText.textContent = 'Fechando o caixão e passando o verniz...';
+  }
 }
 
 // --- Tabs ---
@@ -133,8 +197,7 @@ compressBtn.addEventListener('click', async () => {
   formData.append('profile', profile);
   formData.append('paperSize', compressPaperSize?.value || 'a4');
 
-  loadingText.textContent = 'Destruindo seu PDF...';
-  loadingEl.classList.remove('hidden');
+  startLoading('compress');
   resultEl.classList.add('hidden');
   compressBtn.disabled = true;
 
@@ -154,8 +217,11 @@ compressBtn.addEventListener('click', async () => {
     downloadBtn.textContent = 'BAIXAR PDF COMPRIMIDO';
     downloadBtn.href = `/api/download/${data.id}?name=${encodeURIComponent(outName)}`;
     downloadBtn.setAttribute('download', outName);
+    stopLoading(true);
+    await wait(350);
     resultEl.classList.remove('hidden');
   } catch (err) {
+    stopLoading(false);
     showError(err.message);
   } finally {
     loadingEl.classList.add('hidden');
@@ -282,8 +348,7 @@ mergeBtn.addEventListener('click', async () => {
   mergeFiles.forEach(f => formData.append('pdfs', f));
   formData.append('paperSize', mergePaperSize?.value || 'a4');
 
-  loadingText.textContent = 'Juntando seus PDFs...';
-  loadingEl.classList.remove('hidden');
+  startLoading('merge');
   resultEl.classList.add('hidden');
   mergeBtn.disabled = true;
 
@@ -300,8 +365,11 @@ mergeBtn.addEventListener('click', async () => {
     downloadBtn.textContent = 'BAIXAR PDF JUNTADO';
     downloadBtn.href = `/api/download/${data.id}?name=${encodeURIComponent(outName)}`;
     downloadBtn.setAttribute('download', outName);
+    stopLoading(true);
+    await wait(350);
     resultEl.classList.remove('hidden');
   } catch (err) {
+    stopLoading(false);
     showError(err.message);
   } finally {
     loadingEl.classList.add('hidden');
