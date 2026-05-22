@@ -92,6 +92,26 @@
             </div>
           </label>
         </div>
+        <div class="paper-size-wrap">
+          <label for="compressPaperSize" class="paper-size-label">
+            <svg class="paper-size-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M6 2.5H13.5L18.5 7.5V21.5H6V2.5Z" fill="#19080b" stroke="#ff2a4d" stroke-width="1.4" />
+              <path d="M13.5 2.5V7.5H18.5" stroke="#ff2a4d" stroke-width="1.4" />
+              <path d="M8.5 11H16M8.5 14H16M8.5 17H14" stroke="#a70d23" stroke-width="1.3" stroke-linecap="round" />
+            </svg>
+            Tamanho do papel
+          </label>
+          <select id="compressPaperSize" class="paper-size-select">
+            <option value="a4" selected>A4 (210 x 297 mm)</option>
+            <option value="letter">Letter (8.5 x 11 in)</option>
+            <option value="legal">Legal (8.5 x 14 in)</option>
+            <option value="a3">A3 (297 x 420 mm)</option>
+            <option value="a5">A5 (148 x 210 mm)</option>
+            <option value="tabloid">Tabloid (11 x 17 in)</option>
+            <option value="executive">Executive (7.25 x 10.5 in)</option>
+            <option value="b5">B5 (176 x 250 mm)</option>
+          </select>
+        </div>
         <button id="compressBtn" class="primary-btn btn-compress" disabled>
           <span class="btn-label">ESMAGAR SEM DÓ</span>
           <span class="btn-sub" id="compressPhrase">Espreme até o talo</span>
@@ -124,6 +144,26 @@
 
       <section class="compression-section">
         <h2>Ordem dos arquivos</h2>
+        <div class="paper-size-wrap">
+          <label for="mergePaperSize" class="paper-size-label">
+            <svg class="paper-size-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M6 2.5H13.5L18.5 7.5V21.5H6V2.5Z" fill="#19080b" stroke="#ff2a4d" stroke-width="1.4" />
+              <path d="M13.5 2.5V7.5H18.5" stroke="#ff2a4d" stroke-width="1.4" />
+              <path d="M8.5 11H16M8.5 14H16M8.5 17H14" stroke="#a70d23" stroke-width="1.3" stroke-linecap="round" />
+            </svg>
+            Tamanho do papel
+          </label>
+          <select id="mergePaperSize" class="paper-size-select">
+            <option value="a4" selected>A4 (210 x 297 mm)</option>
+            <option value="letter">Letter (8.5 x 11 in)</option>
+            <option value="legal">Legal (8.5 x 14 in)</option>
+            <option value="a3">A3 (297 x 420 mm)</option>
+            <option value="a5">A5 (148 x 210 mm)</option>
+            <option value="tabloid">Tabloid (11 x 17 in)</option>
+            <option value="executive">Executive (7.25 x 10.5 in)</option>
+            <option value="b5">B5 (176 x 250 mm)</option>
+          </select>
+        </div>
         <ul id="mergeList" class="merge-list"></ul>
         <p class="dz-sub" id="mergeHint" style="margin-bottom:16px">Adicione pelo menos 2 PDFs. Use as setas para reordenar.</p>
         <button id="mergeBtn" class="primary-btn btn-merge" disabled>

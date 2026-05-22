@@ -7,6 +7,18 @@ const crypto = require('crypto');
 
 const app = express();
 const PORT = 666;
+const FILE_RETENTION_MS = 5 * 60 * 1000;
+const DEFAULT_PAPER_SIZE = 'a4';
+const ALLOWED_PAPER_SIZES = new Set([
+  'a3',
+  'a4',
+  'a5',
+  'letter',
+  'legal',
+  'tabloid',
+  'executive',
+  'b5'
+]);
 
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 const OUTPUT_DIR = path.join(__dirname, 'outputs');
@@ -27,22 +39,67 @@ const upload = multer({
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+function normalizePaperSize(rawValue) {
+  if (!rawValue) return DEFAULT_PAPER_SIZE;
+  const value = String(rawValue).trim().toLowerCase();
+  if (!ALLOWED_PAPER_SIZES.has(value)) return null;
+  return value;
+}
+
+function buildPaperArgs(paperSize) {
+  return [
+    `-sPAPERSIZE=${paperSize}`,
+    '-dFIXEDMEDIA',
+    '-dPDFFitPage'
+  ];
+}
+
+function scheduleOutputCleanup(filePath) {
+  setTimeout(() => {
+    fs.unlink(filePath, () => {});
+  }, FILE_RETENTION_MS).unref();
+}
+
+function cleanupExpiredOutputs() {
+  fs.readdir(OUTPUT_DIR, (dirErr, files) => {
+    if (dirErr) return;
+
+    const now = Date.now();
+    files
+      .filter((name) => name.startsWith('comprimido_') && name.endsWith('.pdf'))
+      .forEach((name) => {
+        const fullPath = path.join(OUTPUT_DIR, name);
+        fs.stat(fullPath, (statErr, stats) => {
+          if (statErr) return;
+          if (now - stats.mtimeMs > FILE_RETENTION_MS) {
+            fs.unlink(fullPath, () => {});
+          }
+        });
+      });
+  });
+}
+
+cleanupExpiredOutputs();
+setInterval(cleanupExpiredOutputs, 60 * 1000).unref();
+
 const GS_PROFILES = {
-  marromeno: (input, output) => ([
+  marromeno: (input, output, paperSize) => ([
     '-sDEVICE=pdfwrite',
     '-dCompatibilityLevel=1.4',
     '-dPDFSETTINGS=/screen',
     '-dAutoRotatePages=/None',
+    ...buildPaperArgs(paperSize),
     '-dNOPAUSE',
     '-dQUIET',
     '-dBATCH',
     `-sOutputFile=${output}`,
     input
   ]),
-  braba: (input, output) => ([
+  braba: (input, output, paperSize) => ([
     '-sDEVICE=pdfwrite',
     '-dCompatibilityLevel=1.4',
     '-dAutoRotatePages=/None',
+    ...buildPaperArgs(paperSize),
     '-dNOPAUSE',
     '-dQUIET',
     '-dBATCH',
@@ -72,13 +129,18 @@ app.post('/api/compress', upload.single('pdf'), (req, res) => {
     fs.unlink(req.file.path, () => {});
     return res.status(400).json({ error: 'Perfil de compressão inválido.' });
   }
+  const paperSize = normalizePaperSize(req.body.paperSize);
+  if (!paperSize) {
+    fs.unlink(req.file.path, () => {});
+    return res.status(400).json({ error: 'Tamanho de papel inválido.' });
+  }
 
   const inputPath = req.file.path;
   const outputId = crypto.randomBytes(16).toString('hex');
   const outputName = `comprimido_${outputId}.pdf`;
   const outputPath = path.join(OUTPUT_DIR, outputName);
 
-  const args = GS_PROFILES[profile](inputPath, outputPath);
+  const args = GS_PROFILES[profile](inputPath, outputPath, paperSize);
 
   execFile('gs', args, (err) => {
     fs.unlink(inputPath, () => {});
@@ -92,10 +154,12 @@ app.post('/api/compress', upload.single('pdf'), (req, res) => {
       if (statErr) {
         return res.status(500).json({ error: 'Arquivo de saída não encontrado.' });
       }
+      scheduleOutputCleanup(outputPath);
       res.json({
         id: outputId,
         size: stats.size,
-        originalName: req.file.originalname
+        originalName: req.file.originalname,
+        paperSize
       });
     });
   });
@@ -106,6 +170,12 @@ app.post('/api/merge', upload.array('pdfs', 50), (req, res) => {
   if (files.length < 2) {
     files.forEach(f => fs.unlink(f.path, () => {}));
     return res.status(400).json({ error: 'Envie pelo menos 2 PDFs para juntar.' });
+  }
+
+  const paperSize = normalizePaperSize(req.body.paperSize);
+  if (!paperSize) {
+    files.forEach(f => fs.unlink(f.path, () => {}));
+    return res.status(400).json({ error: 'Tamanho de papel inválido.' });
   }
 
   let order = files.map((_, i) => i);
@@ -127,6 +197,7 @@ app.post('/api/merge', upload.array('pdfs', 50), (req, res) => {
     '-sDEVICE=pdfwrite',
     '-dCompatibilityLevel=1.4',
     '-dAutoRotatePages=/None',
+    ...buildPaperArgs(paperSize),
     '-dNOPAUSE',
     '-dQUIET',
     '-dBATCH',
@@ -146,10 +217,12 @@ app.post('/api/merge', upload.array('pdfs', 50), (req, res) => {
       if (statErr) {
         return res.status(500).json({ error: 'Arquivo de saída não encontrado.' });
       }
+      scheduleOutputCleanup(outputPath);
       res.json({
         id: outputId,
         size: stats.size,
-        originalName: 'merged.pdf'
+        originalName: 'merged.pdf',
+        paperSize
       });
     });
   });
@@ -165,11 +238,7 @@ app.get('/api/download/:id', (req, res) => {
     return res.status(404).send('Arquivo não encontrado.');
   }
   const downloadName = (req.query.name || 'comprimido.pdf').replace(/[^\w\-. ]/g, '_');
-  res.download(filePath, downloadName, (err) => {
-    if (!err) {
-      setTimeout(() => fs.unlink(filePath, () => {}), 5000);
-    }
-  });
+  res.download(filePath, downloadName);
 });
 
 app.use((err, _req, res, _next) => {

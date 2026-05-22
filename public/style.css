@@ -167,6 +167,48 @@ h2 {
   box-shadow: 0 0 20px rgba(255, 42, 77, 0.15);
 }
 
+.paper-size-wrap {
+  margin-bottom: 20px;
+}
+
+.paper-size-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #ff8da0;
+  font-size: 0.95rem;
+  margin-bottom: 8px;
+}
+
+.paper-size-icon {
+  width: 18px;
+  height: 18px;
+  filter: drop-shadow(0 0 7px rgba(255, 42, 77, 0.4));
+}
+
+.paper-size-select {
+  width: 100%;
+  border: 1px solid #3a1116;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #13070a, #0e0507);
+  color: #f5d6dc;
+  padding: 11px 12px;
+  font-size: 0.96rem;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.paper-size-select:focus {
+  border-color: #ff2a4d;
+  box-shadow: 0 0 0 2px rgba(255, 42, 77, 0.18);
+}
+
+.paper-size-select option {
+  background: #12070a;
+  color: #f2d8de;
+}
+
 .primary-btn {
   display: inline-block;
   background: linear-gradient(180deg, #ff2a4d, #8b0000);

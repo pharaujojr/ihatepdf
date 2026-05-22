@@ -3,6 +3,7 @@ const fileInput = document.getElementById('fileInput');
 const browseBtn = document.getElementById('browseBtn');
 const fileNameEl = document.getElementById('fileName');
 const compressBtn = document.getElementById('compressBtn');
+const compressPaperSize = document.getElementById('compressPaperSize');
 const loadingEl = document.getElementById('loading');
 const loadingText = document.getElementById('loadingText');
 const resultEl = document.getElementById('result');
@@ -16,6 +17,7 @@ const mergeInput = document.getElementById('mergeInput');
 const mergeBrowseBtn = document.getElementById('mergeBrowseBtn');
 const mergeList = document.getElementById('mergeList');
 const mergeBtn = document.getElementById('mergeBtn');
+const mergePaperSize = document.getElementById('mergePaperSize');
 
 let selectedFile = null;
 let mergeFiles = [];
@@ -128,6 +130,7 @@ compressBtn.addEventListener('click', async () => {
   const formData = new FormData();
   formData.append('pdf', selectedFile);
   formData.append('profile', profile);
+  formData.append('paperSize', compressPaperSize?.value || 'a4');
 
   loadingText.textContent = 'Destruindo seu PDF...';
   loadingEl.classList.remove('hidden');
@@ -164,6 +167,8 @@ resetBtn.addEventListener('click', () => {
   fileInput.value = '';
   fileNameEl.textContent = '';
   compressBtn.disabled = true;
+  if (compressPaperSize) compressPaperSize.value = 'a4';
+  if (mergePaperSize) mergePaperSize.value = 'a4';
   mergeFiles = [];
   mergeInput.value = '';
   renderMergeList();
@@ -245,6 +250,7 @@ mergeBtn.addEventListener('click', async () => {
 
   const formData = new FormData();
   mergeFiles.forEach(f => formData.append('pdfs', f));
+  formData.append('paperSize', mergePaperSize?.value || 'a4');
 
   loadingText.textContent = 'Juntando seus PDFs...';
   loadingEl.classList.remove('hidden');
