@@ -6,7 +6,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 
 const app = express();
-const PORT = 666;
+const PORT = Number(process.env.PORT) || 666;
 const FILE_RETENTION_MS = 5 * 60 * 1000;
 const DEFAULT_PAPER_SIZE = 'a4';
 const ALLOWED_PAPER_SIZES = new Set([

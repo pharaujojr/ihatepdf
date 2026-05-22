@@ -21,6 +21,7 @@ const mergePaperSize = document.getElementById('mergePaperSize');
 
 let selectedFile = null;
 let mergeFiles = [];
+let draggedMergeIndex = null;
 
 const COMPRESS_PHRASES = [
   'Espreme até o talo',
@@ -180,27 +181,56 @@ function renderMergeList() {
   mergeList.innerHTML = '';
   mergeFiles.forEach((file, i) => {
     const li = document.createElement('li');
+    li.draggable = true;
+    li.dataset.index = i;
     li.innerHTML = `
+      <span class="drag-handle" aria-hidden="true"></span>
       <span class="idx">${i + 1}.</span>
       <span class="name">${file.name}</span>
       <span class="size">${formatBytes(file.size)}</span>
-      <button type="button" data-action="up" ${i === 0 ? 'disabled' : ''}>▲</button>
-      <button type="button" data-action="down" ${i === mergeFiles.length - 1 ? 'disabled' : ''}>▼</button>
       <button type="button" class="remove-btn" data-action="remove">✕</button>
     `;
-    li.querySelectorAll('button').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const action = btn.dataset.action;
-        if (action === 'up' && i > 0) {
-          [mergeFiles[i - 1], mergeFiles[i]] = [mergeFiles[i], mergeFiles[i - 1]];
-        } else if (action === 'down' && i < mergeFiles.length - 1) {
-          [mergeFiles[i + 1], mergeFiles[i]] = [mergeFiles[i], mergeFiles[i + 1]];
-        } else if (action === 'remove') {
-          mergeFiles.splice(i, 1);
-        }
-        renderMergeList();
-      });
+
+    li.addEventListener('dragstart', (e) => {
+      draggedMergeIndex = i;
+      li.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(i));
     });
+
+    li.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (draggedMergeIndex !== null && draggedMergeIndex !== i) {
+        li.classList.add('drag-over');
+      }
+    });
+
+    li.addEventListener('dragleave', () => {
+      li.classList.remove('drag-over');
+    });
+
+    li.addEventListener('drop', (e) => {
+      e.preventDefault();
+      li.classList.remove('drag-over');
+      const fromIndex = draggedMergeIndex ?? Number(e.dataTransfer.getData('text/plain'));
+      if (!Number.isInteger(fromIndex) || fromIndex === i) return;
+
+      const [movedFile] = mergeFiles.splice(fromIndex, 1);
+      mergeFiles.splice(i, 0, movedFile);
+      draggedMergeIndex = null;
+      renderMergeList();
+    });
+
+    li.addEventListener('dragend', () => {
+      draggedMergeIndex = null;
+      li.classList.remove('dragging', 'drag-over');
+    });
+
+    li.querySelector('.remove-btn').addEventListener('click', () => {
+      mergeFiles.splice(i, 1);
+      renderMergeList();
+    });
+
     mergeList.appendChild(li);
   });
   mergeBtn.disabled = mergeFiles.length < 2;

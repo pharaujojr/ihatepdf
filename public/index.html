@@ -13,7 +13,7 @@
       <img src="logo.svg" alt="Coração Partido" class="logo" />
       <h1>I <span class="hate">HATE</span> PDF</h1>
     </div>
-    <p class="subtitle">Comprima seus PDFs sem dó.</p>
+    <p class="subtitle">Não faça amor. Faça Guerra!.</p>
   </header>
 
   <main>
@@ -69,7 +69,7 @@
             <path d="M38 44 L62 56 M62 44 L38 56" stroke="#ff2a4d" stroke-width="2.5" stroke-linecap="round"/>
           </svg>
           <p class="dz-text">Arraste seu PDF aqui</p>
-          <p class="dz-sub">ou <button type="button" id="browseBtn" class="link-btn">clique para escolher</button></p>
+          <p class="dz-sub">ou <button type="button" id="browseBtn" class="link-btn">clique para definir os desafortunados</button></p>
           <p id="fileName" class="file-name"></p>
         </div>
       </section>
@@ -81,7 +81,7 @@
             <input type="radio" name="profile" value="marromeno" checked />
             <div class="option-card">
               <h3>Compressão Marromeno</h3>
-              <p>Reduz o tamanho mantendo qualidade aceitável.</p>
+              <p>Vai reduzir o tamanho e deixar aquela qualidade half-mouth.</p>
             </div>
           </label>
           <label class="option">
@@ -92,12 +92,16 @@
             </div>
           </label>
         </div>
+      </section>
+
+      <section class="paper-size-panel">
         <div class="paper-size-wrap">
           <label for="compressPaperSize" class="paper-size-label">
             <svg class="paper-size-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M6 2.5H13.5L18.5 7.5V21.5H6V2.5Z" fill="#19080b" stroke="#ff2a4d" stroke-width="1.4" />
-              <path d="M13.5 2.5V7.5H18.5" stroke="#ff2a4d" stroke-width="1.4" />
-              <path d="M8.5 11H16M8.5 14H16M8.5 17H14" stroke="#a70d23" stroke-width="1.3" stroke-linecap="round" />
+              <path d="M6.5 2.5H14.2L18 6.6V21.5H6.5V2.5Z" fill="#100608" stroke="#ff2a4d" stroke-width="1.25" stroke-linejoin="round"/>
+              <path d="M14.2 2.7V6.6H17.8" stroke="#ff2a4d" stroke-width="1.25" stroke-linejoin="round"/>
+              <path d="M9.1 13.3C9.1 10.9 10.8 9.3 12.3 9.3C13.9 9.3 15.5 10.9 15.5 13.3C15.5 14.8 14.8 16.1 13.9 16.7V18.1H10.8V16.7C9.8 16.1 9.1 14.8 9.1 13.3Z" fill="#ff2a4d"/>
+              <path d="M10.5 13.1H11.6M13 13.1H14.1M11.4 15.5H13.3" stroke="#100608" stroke-width="1.15" stroke-linecap="round"/>
             </svg>
             Tamanho do papel
           </label>
@@ -112,11 +116,14 @@
             <option value="b5">B5 (176 x 250 mm)</option>
           </select>
         </div>
+      </section>
+
+      <div class="action-wrap">
         <button id="compressBtn" class="primary-btn btn-compress" disabled>
           <span class="btn-label">ESMAGAR SEM DÓ</span>
           <span class="btn-sub" id="compressPhrase">Espreme até o talo</span>
         </button>
-      </section>
+      </div>
     </div>
 
     <div id="tab-merge" class="tab-pane hidden">
@@ -144,12 +151,18 @@
 
       <section class="compression-section">
         <h2>Ordem dos arquivos</h2>
+        <ul id="mergeList" class="merge-list"></ul>
+        <p class="dz-sub" id="mergeHint" style="margin-bottom:16px">Adicione pelo menos 2 PDFs. Arraste os arquivos para reordenar.</p>
+      </section>
+
+      <section class="paper-size-panel">
         <div class="paper-size-wrap">
           <label for="mergePaperSize" class="paper-size-label">
             <svg class="paper-size-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M6 2.5H13.5L18.5 7.5V21.5H6V2.5Z" fill="#19080b" stroke="#ff2a4d" stroke-width="1.4" />
-              <path d="M13.5 2.5V7.5H18.5" stroke="#ff2a4d" stroke-width="1.4" />
-              <path d="M8.5 11H16M8.5 14H16M8.5 17H14" stroke="#a70d23" stroke-width="1.3" stroke-linecap="round" />
+              <path d="M6.5 2.5H14.2L18 6.6V21.5H6.5V2.5Z" fill="#100608" stroke="#ff2a4d" stroke-width="1.25" stroke-linejoin="round"/>
+              <path d="M14.2 2.7V6.6H17.8" stroke="#ff2a4d" stroke-width="1.25" stroke-linejoin="round"/>
+              <path d="M9.1 13.3C9.1 10.9 10.8 9.3 12.3 9.3C13.9 9.3 15.5 10.9 15.5 13.3C15.5 14.8 14.8 16.1 13.9 16.7V18.1H10.8V16.7C9.8 16.1 9.1 14.8 9.1 13.3Z" fill="#ff2a4d"/>
+              <path d="M10.5 13.1H11.6M13 13.1H14.1M11.4 15.5H13.3" stroke="#100608" stroke-width="1.15" stroke-linecap="round"/>
             </svg>
             Tamanho do papel
           </label>
@@ -164,20 +177,21 @@
             <option value="b5">B5 (176 x 250 mm)</option>
           </select>
         </div>
-        <ul id="mergeList" class="merge-list"></ul>
-        <p class="dz-sub" id="mergeHint" style="margin-bottom:16px">Adicione pelo menos 2 PDFs. Use as setas para reordenar.</p>
+      </section>
+
+      <div class="action-wrap">
         <button id="mergeBtn" class="primary-btn btn-merge" disabled>
-          <span class="btn-label">FUNDIR NA TREVA</span>
+          <span class="btn-label">FUNDIR ESSA BAGAÇA</span>
           <span class="btn-sub" id="mergePhrase">Une os fragmentos num só</span>
         </button>
-      </section>
+      </div>
     </div>
 
     <section id="loading" class="loading hidden">
       <div class="heart-loader">
         <img src="logo.svg" alt="" />
       </div>
-      <p id="loadingText">Destruindo seu PDF...</p>
+      <p id="loadingText">Chaurisbrando seu PDF...</p>
     </section>
 
     <section id="result" class="result hidden">
@@ -191,7 +205,7 @@
   </main>
 
   <footer>
-    <p>I HATE PDF &copy; 2026 - Feito com ódio aos PDFs grandes</p>
+    <p>I HATE PDF &copy; 2026 - Feito com ódio aos PDFs! E também todo o resto.</p>
   </footer>
 
   <script src="app.js"></script>
