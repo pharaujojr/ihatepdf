@@ -83,6 +83,18 @@ cleanupExpiredOutputs();
 setInterval(cleanupExpiredOutputs, 60 * 1000).unref();
 
 const GS_PROFILES = {
+  cadinho: (input, output, paperSize) => ([
+    '-sDEVICE=pdfwrite',
+    '-dCompatibilityLevel=1.4',
+    '-dPDFSETTINGS=/ebook',
+    '-dAutoRotatePages=/None',
+    ...buildPaperArgs(paperSize),
+    '-dNOPAUSE',
+    '-dQUIET',
+    '-dBATCH',
+    `-sOutputFile=${output}`,
+    input
+  ]),
   marromeno: (input, output, paperSize) => ([
     '-sDEVICE=pdfwrite',
     '-dCompatibilityLevel=1.4',

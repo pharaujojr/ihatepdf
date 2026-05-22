@@ -2,6 +2,7 @@ services:
   ihatepdf:
     build: .
     container_name: ihatepdf
+    cpus: "0.5"
     ports:
       - "666:666"
     restart: unless-stopped
