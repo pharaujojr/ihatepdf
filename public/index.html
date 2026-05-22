@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>I HATE PDF</title>
+  <link rel="icon" type="image/svg+xml" href="logo.svg" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="logo-wrap">
+      <img src="logo.svg" alt="Coração Partido" class="logo" />
+      <h1>I <span class="hate">HATE</span> PDF</h1>
+    </div>
+    <p class="subtitle">Comprima seus PDFs sem dó.</p>
+  </header>
+
+  <main>
+    <section id="dropzone" class="dropzone">
+      <input type="file" id="fileInput" accept="application/pdf,.pdf" hidden />
+      <div class="dz-inner">
+        <img src="logo.svg" alt="" class="dz-icon" />
+        <p class="dz-text">Arraste seu PDF aqui</p>
+        <p class="dz-sub">ou <button type="button" id="browseBtn" class="link-btn">clique para escolher</button></p>
+        <p id="fileName" class="file-name"></p>
+      </div>
+    </section>
+
+    <section class="compression-section">
+      <h2>Escolha a compressão</h2>
+      <div class="options">
+        <label class="option">
+          <input type="radio" name="profile" value="marromeno" checked />
+          <div class="option-card">
+            <h3>Compressão Marromeno</h3>
+            <p>Reduz o tamanho mantendo qualidade aceitável.</p>
+          </div>
+        </label>
+        <label class="option">
+          <input type="radio" name="profile" value="braba" />
+          <div class="option-card">
+            <h3>Compressão Braba das Braba</h3>
+            <p>Esmaga o PDF até o talo. Qualidade? Detalhe.</p>
+          </div>
+        </label>
+      </div>
+      <button id="compressBtn" class="primary-btn" disabled>COMPRIMIR</button>
+    </section>
+
+    <section id="loading" class="loading hidden">
+      <div class="heart-loader">
+        <img src="logo.svg" alt="" />
+      </div>
+      <p>Destruindo seu PDF...</p>
+    </section>
+
+    <section id="result" class="result hidden">
+      <h2>Pronto!</h2>
+      <p id="resultInfo"></p>
+      <a id="downloadBtn" class="primary-btn" href="#">BAIXAR PDF COMPRIMIDO</a>
+      <button id="resetBtn" class="link-btn">Comprimir outro</button>
+    </section>
+
+    <section id="errorBox" class="error hidden"></section>
+  </main>
+
+  <footer>
+    <p>I HATE PDF &copy; 2026 - Feito com ódio aos PDFs grandes</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

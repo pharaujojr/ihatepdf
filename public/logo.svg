@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="120" height="120">
+  <defs>
+    <linearGradient id="heartGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ff2a4d"/>
+      <stop offset="100%" stop-color="#8b0000"/>
+    </linearGradient>
+  </defs>
+  <!-- Left half -->
+  <path d="M50 88 C 20 65, 5 45, 15 28 C 22 15, 38 14, 47 26 L 50 32 L 44 42 L 52 50 L 42 58 L 50 70 Z"
+        fill="url(#heartGrad)" stroke="#000" stroke-width="2" stroke-linejoin="round"/>
+  <!-- Right half -->
+  <path d="M50 88 C 80 65, 95 45, 85 28 C 78 15, 62 14, 53 26 L 50 32 L 56 42 L 48 50 L 58 58 L 50 70 Z"
+        fill="url(#heartGrad)" stroke="#000" stroke-width="2" stroke-linejoin="round"/>
+  <!-- Crack line (zigzag) -->
+  <path d="M50 14 L 47 26 L 53 36 L 45 46 L 55 56 L 47 66 L 53 76 L 50 88"
+        fill="none" stroke="#000" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,7 @@
+services:
+  ihatepdf:
+    build: .
+    container_name: ihatepdf
+    ports:
+      - "666:666"
+    restart: unless-stopped
