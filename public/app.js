@@ -26,17 +26,17 @@ let draggedMergeIndex = null;
 const COMPRESS_PHRASES = [
   'Espreme até o talo',
   'Sem dó, sem piedade',
-  'Esmaga essa praga',
-  'Mata o peso desse arquivo',
-  'Destrói os megabytes'
+  'Esmaga essa bodega',
+  'Arrocha no encolhimento',
+  'Meu e-mail não é GugoDraive'
 ];
 
 const MERGE_PHRASES = [
-  'Une os fragmentos num só',
-  'Funde tudo na escuridão',
-  'Forja um PDF único',
-  'Junta os pedaços perdidos',
-  'Combina na treva'
+  'Mistura, mistura, mistura...',
+  'Forje-os no ódio',
+  'Junta esses trem',
+  'Não precisa tá perto pra tá junto...s2',
+  'Bate com limão e gelo'
 ];
 
 function rotatePhrase(el, list) {
