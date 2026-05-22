@@ -32,6 +32,7 @@ const GS_PROFILES = {
     '-sDEVICE=pdfwrite',
     '-dCompatibilityLevel=1.4',
     '-dPDFSETTINGS=/screen',
+    '-dAutoRotatePages=/None',
     '-dNOPAUSE',
     '-dQUIET',
     '-dBATCH',
@@ -41,6 +42,7 @@ const GS_PROFILES = {
   braba: (input, output) => ([
     '-sDEVICE=pdfwrite',
     '-dCompatibilityLevel=1.4',
+    '-dAutoRotatePages=/None',
     '-dNOPAUSE',
     '-dQUIET',
     '-dBATCH',
@@ -94,6 +96,60 @@ app.post('/api/compress', upload.single('pdf'), (req, res) => {
         id: outputId,
         size: stats.size,
         originalName: req.file.originalname
+      });
+    });
+  });
+});
+
+app.post('/api/merge', upload.array('pdfs', 50), (req, res) => {
+  const files = req.files || [];
+  if (files.length < 2) {
+    files.forEach(f => fs.unlink(f.path, () => {}));
+    return res.status(400).json({ error: 'Envie pelo menos 2 PDFs para juntar.' });
+  }
+
+  let order = files.map((_, i) => i);
+  if (req.body.order) {
+    try {
+      const parsed = JSON.parse(req.body.order);
+      if (Array.isArray(parsed) && parsed.length === files.length) {
+        order = parsed.map(Number);
+      }
+    } catch (_) {}
+  }
+
+  const inputPaths = order.map(i => files[i].path);
+  const outputId = crypto.randomBytes(16).toString('hex');
+  const outputName = `comprimido_${outputId}.pdf`;
+  const outputPath = path.join(OUTPUT_DIR, outputName);
+
+  const args = [
+    '-sDEVICE=pdfwrite',
+    '-dCompatibilityLevel=1.4',
+    '-dAutoRotatePages=/None',
+    '-dNOPAUSE',
+    '-dQUIET',
+    '-dBATCH',
+    `-sOutputFile=${outputPath}`,
+    ...inputPaths
+  ];
+
+  execFile('gs', args, (err) => {
+    files.forEach(f => fs.unlink(f.path, () => {}));
+
+    if (err) {
+      console.error('Erro no Ghostscript (merge):', err);
+      return res.status(500).json({ error: 'Falha ao juntar os PDFs.' });
+    }
+
+    fs.stat(outputPath, (statErr, stats) => {
+      if (statErr) {
+        return res.status(500).json({ error: 'Arquivo de saída não encontrado.' });
+      }
+      res.json({
+        id: outputId,
+        size: stats.size,
+        originalName: 'merged.pdf'
       });
     });
   });

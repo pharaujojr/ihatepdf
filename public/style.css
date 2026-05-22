@@ -241,6 +241,101 @@ h2 {
   display: none !important;
 }
 
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.tab-btn {
+  flex: 1;
+  background: #111;
+  color: #888;
+  border: 1px solid #222;
+  padding: 14px 16px;
+  font-size: 1rem;
+  font-weight: 900;
+  letter-spacing: 2px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.tab-btn:hover {
+  color: #fff;
+  border-color: #444;
+}
+
+.tab-btn.active {
+  background: linear-gradient(180deg, #ff2a4d, #8b0000);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 4px 16px rgba(255, 42, 77, 0.3);
+}
+
+.merge-list {
+  list-style: none;
+  margin-bottom: 20px;
+  display: grid;
+  gap: 8px;
+}
+
+.merge-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: #0a0a0a;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+}
+
+.merge-list .idx {
+  color: #ff2a4d;
+  font-weight: 900;
+  min-width: 24px;
+}
+
+.merge-list .name {
+  flex: 1;
+  word-break: break-all;
+  font-size: 0.95rem;
+}
+
+.merge-list .size {
+  color: #666;
+  font-size: 0.85rem;
+}
+
+.merge-list button {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  color: #ccc;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.9rem;
+  transition: all 0.15s;
+}
+
+.merge-list button:hover:not(:disabled) {
+  border-color: #ff2a4d;
+  color: #ff2a4d;
+}
+
+.merge-list button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.merge-list .remove-btn:hover {
+  border-color: #ff2a4d;
+  color: #ff2a4d;
+}
+
 footer {
   text-align: center;
   padding: 20px;

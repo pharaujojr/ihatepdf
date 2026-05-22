@@ -17,49 +17,74 @@
   </header>
 
   <main>
-    <section id="dropzone" class="dropzone">
-      <input type="file" id="fileInput" accept="application/pdf,.pdf" hidden />
-      <div class="dz-inner">
-        <img src="logo.svg" alt="" class="dz-icon" />
-        <p class="dz-text">Arraste seu PDF aqui</p>
-        <p class="dz-sub">ou <button type="button" id="browseBtn" class="link-btn">clique para escolher</button></p>
-        <p id="fileName" class="file-name"></p>
-      </div>
-    </section>
+    <nav class="tabs">
+      <button type="button" class="tab-btn active" data-tab="compress">COMPRIMIR</button>
+      <button type="button" class="tab-btn" data-tab="merge">JUNTAR</button>
+    </nav>
 
-    <section class="compression-section">
-      <h2>Escolha a compressão</h2>
-      <div class="options">
-        <label class="option">
-          <input type="radio" name="profile" value="marromeno" checked />
-          <div class="option-card">
-            <h3>Compressão Marromeno</h3>
-            <p>Reduz o tamanho mantendo qualidade aceitável.</p>
-          </div>
-        </label>
-        <label class="option">
-          <input type="radio" name="profile" value="braba" />
-          <div class="option-card">
-            <h3>Compressão Braba das Braba</h3>
-            <p>Esmaga o PDF até o talo. Qualidade? Detalhe.</p>
-          </div>
-        </label>
-      </div>
-      <button id="compressBtn" class="primary-btn" disabled>COMPRIMIR</button>
-    </section>
+    <div id="tab-compress" class="tab-pane">
+      <section id="dropzone" class="dropzone">
+        <input type="file" id="fileInput" accept="application/pdf,.pdf" hidden />
+        <div class="dz-inner">
+          <img src="logo.svg" alt="" class="dz-icon" />
+          <p class="dz-text">Arraste seu PDF aqui</p>
+          <p class="dz-sub">ou <button type="button" id="browseBtn" class="link-btn">clique para escolher</button></p>
+          <p id="fileName" class="file-name"></p>
+        </div>
+      </section>
+
+      <section class="compression-section">
+        <h2>Escolha a compressão</h2>
+        <div class="options">
+          <label class="option">
+            <input type="radio" name="profile" value="marromeno" checked />
+            <div class="option-card">
+              <h3>Compressão Marromeno</h3>
+              <p>Reduz o tamanho mantendo qualidade aceitável.</p>
+            </div>
+          </label>
+          <label class="option">
+            <input type="radio" name="profile" value="braba" />
+            <div class="option-card">
+              <h3>Compressão Braba das Braba</h3>
+              <p>Esmaga o PDF até o talo. Qualidade? Detalhe.</p>
+            </div>
+          </label>
+        </div>
+        <button id="compressBtn" class="primary-btn" disabled>COMPRIMIR</button>
+      </section>
+    </div>
+
+    <div id="tab-merge" class="tab-pane hidden">
+      <section id="mergeDropzone" class="dropzone">
+        <input type="file" id="mergeInput" accept="application/pdf,.pdf" multiple hidden />
+        <div class="dz-inner">
+          <img src="logo.svg" alt="" class="dz-icon" />
+          <p class="dz-text">Arraste vários PDFs aqui</p>
+          <p class="dz-sub">ou <button type="button" id="mergeBrowseBtn" class="link-btn">clique para escolher</button></p>
+        </div>
+      </section>
+
+      <section class="compression-section">
+        <h2>Ordem dos arquivos</h2>
+        <ul id="mergeList" class="merge-list"></ul>
+        <p class="dz-sub" id="mergeHint" style="margin-bottom:16px">Adicione pelo menos 2 PDFs. Use as setas para reordenar.</p>
+        <button id="mergeBtn" class="primary-btn" disabled>JUNTAR PDFs</button>
+      </section>
+    </div>
 
     <section id="loading" class="loading hidden">
       <div class="heart-loader">
         <img src="logo.svg" alt="" />
       </div>
-      <p>Destruindo seu PDF...</p>
+      <p id="loadingText">Destruindo seu PDF...</p>
     </section>
 
     <section id="result" class="result hidden">
       <h2>Pronto!</h2>
       <p id="resultInfo"></p>
-      <a id="downloadBtn" class="primary-btn" href="#">BAIXAR PDF COMPRIMIDO</a>
-      <button id="resetBtn" class="link-btn">Comprimir outro</button>
+      <a id="downloadBtn" class="primary-btn" href="#">BAIXAR PDF</a>
+      <button id="resetBtn" class="link-btn">Fazer outro</button>
     </section>
 
     <section id="errorBox" class="error hidden"></section>
