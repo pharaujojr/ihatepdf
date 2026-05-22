@@ -20,6 +20,39 @@ const mergeBtn = document.getElementById('mergeBtn');
 let selectedFile = null;
 let mergeFiles = [];
 
+const COMPRESS_PHRASES = [
+  'Espreme até o talo',
+  'Sem dó, sem piedade',
+  'Esmaga essa praga',
+  'Mata o peso desse arquivo',
+  'Destrói os megabytes'
+];
+
+const MERGE_PHRASES = [
+  'Une os fragmentos num só',
+  'Funde tudo na escuridão',
+  'Forja um PDF único',
+  'Junta os pedaços perdidos',
+  'Combina na treva'
+];
+
+function rotatePhrase(el, list) {
+  if (!el) return;
+  let i = Math.floor(Math.random() * list.length);
+  el.textContent = list[i];
+  setInterval(() => {
+    i = (i + 1) % list.length;
+    el.style.opacity = '0';
+    setTimeout(() => {
+      el.textContent = list[i];
+      el.style.opacity = '0.85';
+    }, 220);
+  }, 3500);
+}
+
+rotatePhrase(document.getElementById('compressPhrase'), COMPRESS_PHRASES);
+rotatePhrase(document.getElementById('mergePhrase'), MERGE_PHRASES);
+
 function formatBytes(b) {
   if (b < 1024) return b + ' B';
   if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';

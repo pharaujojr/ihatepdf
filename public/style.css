@@ -77,10 +77,18 @@ main {
 }
 
 .dz-icon {
-  width: 64px;
-  height: 64px;
-  opacity: 0.7;
+  width: 84px;
+  height: 84px;
+  opacity: 0.95;
   margin-bottom: 16px;
+  filter: drop-shadow(0 0 18px rgba(255, 42, 77, 0.35));
+  transition: transform 0.3s, filter 0.3s;
+}
+
+.dropzone:hover .dz-icon,
+.dropzone.dragover .dz-icon {
+  transform: scale(1.06) rotate(-2deg);
+  filter: drop-shadow(0 0 24px rgba(255, 42, 77, 0.7));
 }
 
 .dz-text {
@@ -187,6 +195,69 @@ h2 {
   cursor: not-allowed;
 }
 
+.btn-compress,
+.btn-merge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 18px 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-compress .btn-label,
+.btn-merge .btn-label {
+  font-size: 1.15rem;
+  letter-spacing: 3px;
+}
+
+.btn-compress .btn-sub,
+.btn-merge .btn-sub {
+  font-size: 0.75rem;
+  letter-spacing: 1.5px;
+  font-weight: 500;
+  opacity: 0.85;
+  text-transform: uppercase;
+  font-style: italic;
+  transition: opacity 0.22s;
+}
+
+.btn-compress {
+  background: linear-gradient(180deg, #ff2a4d, #6b0000);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.btn-compress::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(135deg, transparent 0 12px, rgba(0, 0, 0, 0.08) 12px 14px);
+  pointer-events: none;
+}
+
+.btn-merge {
+  background: linear-gradient(180deg, #b3001a, #2a0006);
+  border: 1px solid #ff2a4d;
+  text-shadow: 0 0 10px rgba(255, 42, 77, 0.7);
+}
+
+.btn-merge::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 0%, rgba(255, 42, 77, 0.3), transparent 70%);
+  pointer-events: none;
+}
+
+.btn-compress:hover:not(:disabled) {
+  box-shadow: 0 8px 28px rgba(255, 42, 77, 0.5), inset 0 0 20px rgba(0, 0, 0, 0.3);
+}
+
+.btn-merge:hover:not(:disabled) {
+  box-shadow: 0 8px 28px rgba(255, 42, 77, 0.6), inset 0 0 24px rgba(255, 42, 77, 0.25);
+}
+
 .loading {
   text-align: center;
   padding: 40px;
@@ -243,35 +314,76 @@ h2 {
 
 .tabs {
   display: flex;
-  gap: 8px;
-  margin-bottom: 24px;
+  gap: 12px;
+  margin-bottom: 28px;
+  position: relative;
 }
 
 .tab-btn {
   flex: 1;
-  background: #111;
-  color: #888;
-  border: 1px solid #222;
-  padding: 14px 16px;
-  font-size: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #0d0d0d;
+  color: #666;
+  border: 1px solid #1f1f1f;
+  padding: 18px 12px 16px;
+  font-size: 0.95rem;
   font-weight: 900;
   letter-spacing: 2px;
-  border-radius: 10px;
+  border-radius: 14px;
   cursor: pointer;
   font-family: inherit;
-  transition: all 0.15s;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+
+.tab-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 100%, rgba(255, 42, 77, 0.15), transparent 60%);
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
 }
 
 .tab-btn:hover {
   color: #fff;
-  border-color: #444;
+  border-color: #3a1116;
+  transform: translateY(-1px);
+}
+
+.tab-btn:hover::before {
+  opacity: 1;
 }
 
 .tab-btn.active {
-  background: linear-gradient(180deg, #ff2a4d, #8b0000);
-  color: #fff;
-  border-color: transparent;
-  box-shadow: 0 4px 16px rgba(255, 42, 77, 0.3);
+  background: linear-gradient(180deg, #1a0a0d, #0d0506);
+  color: #ff2a4d;
+  border-color: #ff2a4d;
+  box-shadow: 0 0 24px rgba(255, 42, 77, 0.25), inset 0 0 16px rgba(255, 42, 77, 0.1);
+  text-shadow: 0 0 12px rgba(255, 42, 77, 0.5);
+}
+
+.tab-btn.active::before {
+  opacity: 1;
+}
+
+.tab-icon {
+  width: 36px;
+  height: 36px;
+  filter: drop-shadow(0 0 8px rgba(255, 42, 77, 0.3));
+  transition: transform 0.3s;
+}
+
+.tab-btn:hover .tab-icon,
+.tab-btn.active .tab-icon {
+  filter: drop-shadow(0 0 14px rgba(255, 42, 77, 0.7));
+  transform: scale(1.08);
 }
 
 .merge-list {

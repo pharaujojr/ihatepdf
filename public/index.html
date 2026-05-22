@@ -18,15 +18,56 @@
 
   <main>
     <nav class="tabs">
-      <button type="button" class="tab-btn active" data-tab="compress">COMPRIMIR</button>
-      <button type="button" class="tab-btn" data-tab="merge">JUNTAR</button>
+      <button type="button" class="tab-btn active" data-tab="compress">
+        <svg class="tab-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="crushGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#ff2a4d"/>
+              <stop offset="100%" stop-color="#8b0000"/>
+            </linearGradient>
+          </defs>
+          <path d="M8 12 L40 12 L36 16 L12 16 Z" fill="url(#crushGrad)" stroke="#000" stroke-width="1.5" stroke-linejoin="round"/>
+          <path d="M8 36 L40 36 L36 32 L12 32 Z" fill="url(#crushGrad)" stroke="#000" stroke-width="1.5" stroke-linejoin="round"/>
+          <path d="M14 19 L34 19 L32 24 L34 29 L14 29 L16 24 Z" fill="#1a0a0d" stroke="#ff2a4d" stroke-width="1.5" stroke-linejoin="round"/>
+          <path d="M19 22 L29 26 M29 22 L19 26" stroke="#ff2a4d" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span>COMPRIMIR</span>
+      </button>
+      <button type="button" class="tab-btn" data-tab="merge">
+        <svg class="tab-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="mergeGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#ff2a4d"/>
+              <stop offset="100%" stop-color="#8b0000"/>
+            </linearGradient>
+          </defs>
+          <path d="M24 40 C 12 30, 6 22, 11 14 C 14 8, 22 9, 24 14 C 26 9, 34 8, 37 14 C 42 22, 36 30, 24 40 Z"
+                fill="url(#mergeGrad)" stroke="#000" stroke-width="1.5" stroke-linejoin="round"/>
+          <path d="M24 14 L 21 20 L 27 24 L 20 28 L 26 33 L 24 40"
+                fill="none" stroke="#000" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+          <path d="M14 6 L20 12 M14 12 L20 6" stroke="#ff2a4d" stroke-width="2" stroke-linecap="round"/>
+          <path d="M28 6 L34 12 M28 12 L34 6" stroke="#ff2a4d" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <span>JUNTAR</span>
+      </button>
     </nav>
 
     <div id="tab-compress" class="tab-pane">
       <section id="dropzone" class="dropzone">
         <input type="file" id="fileInput" accept="application/pdf,.pdf" hidden />
         <div class="dz-inner">
-          <img src="logo.svg" alt="" class="dz-icon" />
+          <svg class="dz-icon" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="dzCrushGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#ff2a4d"/>
+                <stop offset="100%" stop-color="#8b0000"/>
+              </linearGradient>
+            </defs>
+            <path d="M10 18 L90 18 L82 28 L18 28 Z" fill="url(#dzCrushGrad)" stroke="#000" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M10 82 L90 82 L82 72 L18 72 Z" fill="url(#dzCrushGrad)" stroke="#000" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M26 36 L74 36 L68 50 L74 64 L26 64 L32 50 Z" fill="#1a0a0d" stroke="#ff2a4d" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M38 44 L62 56 M62 44 L38 56" stroke="#ff2a4d" stroke-width="2.5" stroke-linecap="round"/>
+          </svg>
           <p class="dz-text">Arraste seu PDF aqui</p>
           <p class="dz-sub">ou <button type="button" id="browseBtn" class="link-btn">clique para escolher</button></p>
           <p id="fileName" class="file-name"></p>
@@ -51,7 +92,10 @@
             </div>
           </label>
         </div>
-        <button id="compressBtn" class="primary-btn" disabled>COMPRIMIR</button>
+        <button id="compressBtn" class="primary-btn btn-compress" disabled>
+          <span class="btn-label">ESMAGAR SEM DÓ</span>
+          <span class="btn-sub" id="compressPhrase">Espreme até o talo</span>
+        </button>
       </section>
     </div>
 
@@ -59,7 +103,20 @@
       <section id="mergeDropzone" class="dropzone">
         <input type="file" id="mergeInput" accept="application/pdf,.pdf" multiple hidden />
         <div class="dz-inner">
-          <img src="logo.svg" alt="" class="dz-icon" />
+          <svg class="dz-icon" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="dzMergeGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#ff2a4d"/>
+                <stop offset="100%" stop-color="#8b0000"/>
+              </linearGradient>
+            </defs>
+            <path d="M50 86 C 24 64, 12 46, 20 28 C 26 16, 42 16, 50 28 C 58 16, 74 16, 80 28 C 88 46, 76 64, 50 86 Z"
+                  fill="url(#dzMergeGrad)" stroke="#000" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M50 28 L 44 40 L 56 48 L 42 56 L 56 66 L 50 86"
+                  fill="none" stroke="#000" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+            <path d="M22 10 L34 22 M22 22 L34 10" stroke="#ff2a4d" stroke-width="3" stroke-linecap="round"/>
+            <path d="M66 10 L78 22 M66 22 L78 10" stroke="#ff2a4d" stroke-width="3" stroke-linecap="round"/>
+          </svg>
           <p class="dz-text">Arraste vários PDFs aqui</p>
           <p class="dz-sub">ou <button type="button" id="mergeBrowseBtn" class="link-btn">clique para escolher</button></p>
         </div>
@@ -69,7 +126,10 @@
         <h2>Ordem dos arquivos</h2>
         <ul id="mergeList" class="merge-list"></ul>
         <p class="dz-sub" id="mergeHint" style="margin-bottom:16px">Adicione pelo menos 2 PDFs. Use as setas para reordenar.</p>
-        <button id="mergeBtn" class="primary-btn" disabled>JUNTAR PDFs</button>
+        <button id="mergeBtn" class="primary-btn btn-merge" disabled>
+          <span class="btn-label">FUNDIR NA TREVA</span>
+          <span class="btn-sub" id="mergePhrase">Une os fragmentos num só</span>
+        </button>
       </section>
     </div>
 
