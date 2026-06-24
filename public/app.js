@@ -43,11 +43,11 @@ const MERGE_PHRASES = [
 ];
 
 const WORD_PHRASES = [
-  'Muda de lado sem dó',
+  'Troca esse trem na base do Ódio',
   'Vira a casaca do arquivo',
   'De cá pra lá, de lá pra cá',
   'Troca de figurino',
-  'Converte essa lelê'
+  'Modo Emilia Perez no bagulho!'
 ];
 
 const IMAGE_PHRASES = [

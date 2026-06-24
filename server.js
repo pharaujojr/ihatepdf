@@ -284,65 +284,39 @@ app.post('/api/word', uploadWord.single('file'), (req, res) => {
   const direction = req.body.direction;
   const inExt = path.extname(req.file.originalname).toLowerCase();
 
-  let targetFormat;
-  let targetExt;
-  let inFilter = null;
-  if (direction === 'word2pdf') {
-    if (!WORD_EXT.includes(inExt)) {
-      fs.unlink(req.file.path, () => {});
-      return res.status(400).json({ error: 'Para Word → PDF, envie um documento (.docx, .doc, .odt, .rtf, .txt).' });
-    }
-    targetFormat = 'pdf';
-    targetExt = 'pdf';
-  } else if (direction === 'pdf2word') {
-    if (inExt !== '.pdf') {
-      fs.unlink(req.file.path, () => {});
-      return res.status(400).json({ error: 'Para PDF → Word, envie um arquivo .pdf.' });
-    }
-    // writer_pdf_import força o PDF a abrir como documento Writer (e não Draw),
-    // permitindo salvar como .docx
-    targetFormat = 'docx:Office Open XML Text';
-    targetExt = 'docx';
-    inFilter = 'writer_pdf_import';
-  } else {
+  if (direction !== 'word2pdf' && direction !== 'pdf2word') {
     fs.unlink(req.file.path, () => {});
     return res.status(400).json({ error: 'Direção de conversão inválida.' });
   }
+  if (direction === 'word2pdf' && !WORD_EXT.includes(inExt)) {
+    fs.unlink(req.file.path, () => {});
+    return res.status(400).json({ error: 'Para Word → PDF, envie um documento (.docx, .doc, .odt, .rtf, .txt).' });
+  }
+  if (direction === 'pdf2word' && inExt !== '.pdf') {
+    fs.unlink(req.file.path, () => {});
+    return res.status(400).json({ error: 'Para PDF → Word, envie um arquivo .pdf.' });
+  }
+
+  const targetExt = direction === 'word2pdf' ? 'pdf' : 'docx';
 
   const jobId = newOutputId();
   const jobDir = path.join(WORK_DIR, jobId);
   fs.mkdirSync(jobDir, { recursive: true });
 
-  // LibreOffice detecta o formato pela extensão: copia com a extensão correta
+  // Os conversores detectam o formato pela extensão: copia com a extensão correta
   const inputPath = path.join(jobDir, `entrada${inExt}`);
   fs.copyFileSync(req.file.path, inputPath);
   fs.unlink(req.file.path, () => {});
 
-  const profileDir = path.join(jobDir, 'lo-profile');
-  const args = [
-    '--headless',
-    '--norestore',
-    `-env:UserInstallation=file://${profileDir}`
-  ];
-  if (inFilter) {
-    args.push(`--infilter=${inFilter}`);
-  }
-  args.push('--convert-to', targetFormat, '--outdir', jobDir, inputPath);
+  const producedPath = path.join(jobDir, `entrada.${targetExt}`);
 
-  execFile('soffice', args, { timeout: 120000 }, (err) => {
-    if (err) {
-      console.error('Erro no LibreOffice:', err);
-      removeWorkDir(jobDir);
-      return res.status(500).json({ error: 'Falha na conversão. O arquivo pode estar corrompido ou protegido.' });
-    }
-
-    const producedPath = path.join(jobDir, `entrada.${targetExt}`);
+  // Move o resultado para a pasta de outputs e responde
+  const finish = () => {
     fs.stat(producedPath, (statErr, stats) => {
       if (statErr) {
         removeWorkDir(jobDir);
         return res.status(500).json({ error: 'Arquivo convertido não encontrado.' });
       }
-
       const outputId = newOutputId();
       const outputPath = outputPathFor(outputId, targetExt);
       fs.copyFile(producedPath, outputPath, (copyErr) => {
@@ -359,6 +333,39 @@ app.post('/api/word', uploadWord.single('file'), (req, res) => {
         });
       });
     });
+  };
+
+  if (direction === 'pdf2word') {
+    // pdf2docx reconstrói parágrafos e tabelas (evita o excesso de caixas de
+    // texto soltas que o LibreOffice gera ao importar PDF)
+    execFile('pdf2docx', ['convert', inputPath, producedPath], { timeout: 180000 }, (err) => {
+      if (err) {
+        console.error('Erro no pdf2docx:', err);
+        removeWorkDir(jobDir);
+        return res.status(500).json({ error: 'Falha na conversão. O PDF pode estar protegido, digitalizado (imagem) ou corrompido.' });
+      }
+      finish();
+    });
+    return;
+  }
+
+  // word2pdf: LibreOffice headless
+  const profileDir = path.join(jobDir, 'lo-profile');
+  const args = [
+    '--headless',
+    '--norestore',
+    `-env:UserInstallation=file://${profileDir}`,
+    '--convert-to', 'pdf',
+    '--outdir', jobDir,
+    inputPath
+  ];
+  execFile('soffice', args, { timeout: 120000 }, (err) => {
+    if (err) {
+      console.error('Erro no LibreOffice:', err);
+      removeWorkDir(jobDir);
+      return res.status(500).json({ error: 'Falha na conversão. O arquivo pode estar corrompido ou protegido.' });
+    }
+    finish();
   });
 });
 

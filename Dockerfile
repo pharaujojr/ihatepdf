@@ -1,21 +1,26 @@
-FROM node:20-alpine
+FROM node:20-slim
 
 # Ghostscript: compressão/merge de PDF
-# LibreOffice: conversão Word <-> PDF
+# libreoffice-writer: conversão Word -> PDF (Writer + core)
 # poppler-utils: pdftoppm para PDF -> imagem
 # imagemagick: conversão de formatos de imagem e imagem -> PDF
 # zip: empacotar múltiplas imagens
-# ttf-* + fontconfig: fontes para o LibreOffice renderizar PDFs decentes
-RUN apk add --no-cache \
+# python3 + pdf2docx: conversão PDF -> Word com parágrafos reais (não caixas de texto)
+# fontes: para o LibreOffice/Ghostscript renderizarem decentemente
+RUN apt-get update && apt-get install -y --no-install-recommends \
       ghostscript \
-      libreoffice \
+      libreoffice-writer \
       poppler-utils \
       imagemagick \
       zip \
-      fontconfig \
-      ttf-dejavu \
-      ttf-liberation \
-  && fc-cache -f
+      python3 \
+      python3-pip \
+      libglib2.0-0 \
+      fonts-dejavu \
+      fonts-liberation \
+  && pip install --no-cache-dir --break-system-packages pdf2docx \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
 
 # Libera leitura/escrita de PDF no ImageMagick (policy padrão bloqueia)
 RUN for f in /etc/ImageMagick-7/policy.xml /etc/ImageMagick-6/policy.xml; do \
