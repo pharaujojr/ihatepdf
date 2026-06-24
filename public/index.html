@@ -50,6 +50,35 @@
         </svg>
         <span>JUNTAR</span>
       </button>
+      <button type="button" class="tab-btn" data-tab="word">
+        <svg class="tab-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="wordGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#ff2a4d"/>
+              <stop offset="100%" stop-color="#8b0000"/>
+            </linearGradient>
+          </defs>
+          <path d="M11 5 L29 5 L37 13 L37 43 L11 43 Z" fill="#1a0a0d" stroke="url(#wordGrad)" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M29 5 L29 13 L37 13" fill="none" stroke="url(#wordGrad)" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M16 24 L19 34 L21.5 26 L24 34 L27 24" fill="none" stroke="#ff2a4d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M8 16 L18 22 M18 16 L8 22" stroke="#ff2a4d" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+        <span>WORD</span>
+      </button>
+      <button type="button" class="tab-btn" data-tab="image">
+        <svg class="tab-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="imgGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#ff2a4d"/>
+              <stop offset="100%" stop-color="#8b0000"/>
+            </linearGradient>
+          </defs>
+          <rect x="7" y="9" width="34" height="30" rx="3" fill="#1a0a0d" stroke="url(#imgGrad)" stroke-width="2"/>
+          <circle cx="17" cy="19" r="3.5" fill="#ff2a4d"/>
+          <path d="M11 35 L21 24 L28 31 L33 26 L37 35 Z" fill="none" stroke="#ff2a4d" stroke-width="2" stroke-linejoin="round"/>
+        </svg>
+        <span>IMAGENS</span>
+      </button>
     </nav>
 
     <div id="tab-compress" class="tab-pane">
@@ -190,6 +219,129 @@
         <button id="mergeBtn" class="primary-btn btn-merge" disabled>
           <span class="btn-label">FUNDIR ESSA BAGAÇA</span>
           <span class="btn-sub" id="mergePhrase">Une os fragmentos num só</span>
+        </button>
+      </div>
+    </div>
+
+    <div id="tab-word" class="tab-pane hidden">
+      <section class="compression-section">
+        <h2>Para que lado vamos converter?</h2>
+        <div class="options" id="wordDirection">
+          <label class="option">
+            <input type="radio" name="wordDir" value="pdf2word" checked />
+            <div class="option-card">
+              <h3>PDF → Word</h3>
+              <p>Transforma o PDF num .docx editável (com a fidelidade que der).</p>
+            </div>
+          </label>
+          <label class="option">
+            <input type="radio" name="wordDir" value="word2pdf" />
+            <div class="option-card">
+              <h3>Word → PDF</h3>
+              <p>Converte .docx, .doc, .odt, .rtf ou .txt num PDF certinho.</p>
+            </div>
+          </label>
+        </div>
+      </section>
+
+      <section id="wordDropzone" class="dropzone">
+        <input type="file" id="wordInput" hidden />
+        <div class="dz-inner">
+          <svg class="dz-icon" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="dzWordGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#ff2a4d"/>
+                <stop offset="100%" stop-color="#8b0000"/>
+              </linearGradient>
+            </defs>
+            <path d="M24 10 L60 10 L76 26 L76 90 L24 90 Z" fill="#1a0a0d" stroke="url(#dzWordGrad)" stroke-width="3" stroke-linejoin="round"/>
+            <path d="M60 10 L60 26 L76 26" fill="none" stroke="url(#dzWordGrad)" stroke-width="3" stroke-linejoin="round"/>
+            <path d="M34 50 L40 70 L46 56 L52 70 L58 50" fill="none" stroke="#ff2a4d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <p class="dz-text" id="wordDzText">Arraste seu PDF aqui</p>
+          <p class="dz-sub">ou <button type="button" id="wordBrowseBtn" class="link-btn">clique para escolher</button></p>
+          <p id="wordFileName" class="file-name"></p>
+        </div>
+      </section>
+
+      <div class="action-wrap">
+        <button id="wordBtn" class="primary-btn btn-merge" disabled>
+          <span class="btn-label">CONVERTER ESSA TRELELÊ</span>
+          <span class="btn-sub" id="wordPhrase">Muda de lado sem dó</span>
+        </button>
+      </div>
+    </div>
+
+    <div id="tab-image" class="tab-pane hidden">
+      <section class="compression-section">
+        <h2>Para que lado vamos converter?</h2>
+        <div class="options" id="imageDirection">
+          <label class="option">
+            <input type="radio" name="imageDir" value="img2pdf" checked />
+            <div class="option-card">
+              <h3>Imagens → PDF</h3>
+              <p>Junta uma ou várias imagens num único PDF, na ordem que quiser.</p>
+            </div>
+          </label>
+          <label class="option">
+            <input type="radio" name="imageDir" value="pdf2img" />
+            <div class="option-card">
+              <h3>PDF → Imagens</h3>
+              <p>Fatia o PDF em imagens. Escolha o formato depois.</p>
+            </div>
+          </label>
+        </div>
+      </section>
+
+      <section id="imageDropzone" class="dropzone">
+        <input type="file" id="imageInput" hidden />
+        <div class="dz-inner">
+          <svg class="dz-icon" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="dzImgGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#ff2a4d"/>
+                <stop offset="100%" stop-color="#8b0000"/>
+              </linearGradient>
+            </defs>
+            <rect x="14" y="20" width="72" height="60" rx="5" fill="#1a0a0d" stroke="url(#dzImgGrad)" stroke-width="3"/>
+            <circle cx="34" cy="40" r="7" fill="#ff2a4d"/>
+            <path d="M20 72 L42 48 L58 62 L70 50 L80 72 Z" fill="none" stroke="#ff2a4d" stroke-width="3" stroke-linejoin="round"/>
+          </svg>
+          <p class="dz-text" id="imageDzText">Arraste suas imagens aqui</p>
+          <p class="dz-sub">ou <button type="button" id="imageBrowseBtn" class="link-btn">clique para escolher</button></p>
+        </div>
+      </section>
+
+      <section id="imageListSection" class="compression-section">
+        <h2>Ordem das imagens</h2>
+        <ul id="imageListEl" class="merge-list"></ul>
+        <p class="dz-sub" id="imageHint" style="margin-bottom:0">Adicione ao menos uma imagem. Arraste para reordenar.</p>
+      </section>
+
+      <section id="imageFormatPanel" class="paper-size-panel hidden">
+        <div class="paper-size-wrap">
+          <label for="imageFormat" class="paper-size-label">
+            <svg class="paper-size-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <rect x="3" y="5" width="18" height="14" rx="2" fill="#100608" stroke="#ff2a4d" stroke-width="1.25"/>
+              <circle cx="8" cy="10" r="1.8" fill="#ff2a4d"/>
+              <path d="M5 17 L10 12 L14 15 L17 12 L19 17 Z" fill="#ff2a4d"/>
+            </svg>
+            Formato da imagem
+          </label>
+          <select id="imageFormat" class="paper-size-select">
+            <option value="png" selected>PNG (sem perdas, transparência)</option>
+            <option value="jpg">JPG (menor, ideal para fotos)</option>
+            <option value="webp">WEBP (moderno, ótima compressão)</option>
+            <option value="tiff">TIFF (impressão / edição)</option>
+            <option value="bmp">BMP (sem compressão)</option>
+          </select>
+        </div>
+      </section>
+
+      <div class="action-wrap">
+        <button id="imageBtn" class="primary-btn btn-compress" disabled>
+          <span class="btn-label">CONVERTER ESSAS BRABA</span>
+          <span class="btn-sub" id="imagePhrase">Pixel vai, pixel vem</span>
         </button>
       </div>
     </div>
