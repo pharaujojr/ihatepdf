@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libglib2.0-0 \
       fonts-dejavu \
       fonts-liberation \
-  && pip install --no-cache-dir --break-system-packages pdf2docx \
+  && pip install --no-cache-dir --break-system-packages pdf2docx langdetect \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
@@ -37,6 +37,7 @@ RUN npm install --omit=dev
 
 COPY server.js ./
 COPY public ./public
+COPY tools ./tools
 
 RUN mkdir -p uploads outputs
 

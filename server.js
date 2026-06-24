@@ -25,6 +25,7 @@ const OUTPUT_PREFIX = 'comprimido_';
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 const OUTPUT_DIR = path.join(__dirname, 'outputs');
 const WORK_DIR = path.join(__dirname, 'work');
+const LANG_SCRIPT = path.join(__dirname, 'tools', 'fix_docx_lang.py');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 fs.mkdirSync(WORK_DIR, { recursive: true });
@@ -344,7 +345,13 @@ app.post('/api/word', uploadWord.single('file'), (req, res) => {
         removeWorkDir(jobDir);
         return res.status(500).json({ error: 'Falha na conversão. O PDF pode estar protegido, digitalizado (imagem) ou corrompido.' });
       }
-      finish();
+      // Ajusta o idioma do .docx para a língua de origem (best-effort: o
+      // pdf2docx marca tudo como en-US por padrão). Falha aqui não impede o
+      // download — apenas mantém o idioma padrão.
+      execFile('python3', [LANG_SCRIPT, producedPath, inputPath], { timeout: 30000 }, (langErr) => {
+        if (langErr) console.error('Aviso ao ajustar idioma do .docx:', langErr.message);
+        finish();
+      });
     });
     return;
   }
