@@ -25,7 +25,8 @@ const OUTPUT_PREFIX = 'comprimido_';
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 const OUTPUT_DIR = path.join(__dirname, 'outputs');
 const WORK_DIR = path.join(__dirname, 'work');
-const LANG_SCRIPT = path.join(__dirname, 'tools', 'fix_docx_lang.py');
+const LANG_SCRIPT  = path.join(__dirname, 'tools', 'fix_docx_lang.py');
+const MERGE_SCRIPT = path.join(__dirname, 'tools', 'merge_pdf.py');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 fs.mkdirSync(WORK_DIR, { recursive: true });
@@ -240,23 +241,15 @@ app.post('/api/merge', uploadPdf.array('pdfs', 50), (req, res) => {
   const outputId = newOutputId();
   const outputPath = outputPathFor(outputId, 'pdf');
 
-  const args = [
-    '-sDEVICE=pdfwrite',
-    '-dCompatibilityLevel=1.4',
-    '-dAutoRotatePages=/None',
-    ...buildPaperArgs(paperSize),
-    '-dNOPAUSE',
-    '-dQUIET',
-    '-dBATCH',
-    `-sOutputFile=${outputPath}`,
-    ...inputPaths
-  ];
-
-  execFile('gs', args, (err) => {
+  // merge_pdf.py embute cada página como Form XObject no PDF de saída:
+  // os streams de fonte e encoding são copiados byte a byte, sem passar por
+  // nenhum engine de renderização. O tamanho de papel é normalizado via CTM
+  // (transformation matrix) na nova página, não por re-renderização.
+  execFile('python3', [MERGE_SCRIPT, outputPath, paperSize, ...inputPaths], { timeout: 120000 }, (err) => {
     cleanupUploads(files);
 
     if (err) {
-      console.error('Erro no Ghostscript (merge):', err);
+      console.error('Erro no merge_pdf.py:', err);
       return res.status(500).json({ error: 'Falha ao juntar os PDFs.' });
     }
 

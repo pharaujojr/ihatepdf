@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libglib2.0-0 \
       fonts-dejavu \
       fonts-liberation \
-  && pip install --no-cache-dir --break-system-packages pdf2docx langdetect \
+  && pip install --no-cache-dir --break-system-packages pdf2docx langdetect pikepdf \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
