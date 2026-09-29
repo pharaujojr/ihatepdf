@@ -260,20 +260,6 @@ function stopLoading(done = false) {
   }
 }
 
-// --- Tabs ---
-const TAB_IDS = ['compress', 'merge', 'word', 'image', 'text', 'excel'];
-document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    const tab = btn.dataset.tab;
-    TAB_IDS.forEach(id => {
-      document.getElementById(`tab-${id}`).classList.toggle('hidden', id !== tab);
-    });
-    resultEl.classList.add('hidden');
-  });
-});
-
 // --- Compress ---
 function setFile(file) {
   if (!file) return;
@@ -879,3 +865,495 @@ const singlePdfTools = [
     }
   })
 ];
+
+// --- Arsenal: ferramentas avulsas (POST /api/tool/:tool) ---
+// Cada campo: { key, type: text|textarea|number|password|select|check|checks, label, ... }
+const TOOL_DEFS = {
+  split: {
+    title: 'Esquartejar PDF',
+    desc: 'Corta o PDF em pedaços. Jack, o Estripador de páginas. Vários pedaços chegam num .zip.',
+    button: 'ESQUARTEJAR',
+    phrase: 'Picadinho de página',
+    fields: [
+      { key: 'mode', type: 'select', label: 'Como cortar', options: [
+        ['each', 'Cada página vira um PDF'],
+        ['every', 'A cada N páginas'],
+        ['ranges', 'Por intervalos que eu escolho']
+      ] },
+      { key: 'every', type: 'number', label: 'Páginas por pedaço', value: 2, min: 1, showIf: { mode: 'every' } },
+      { key: 'ranges', type: 'text', label: 'Intervalos (separe os PDFs com |)', placeholder: '1-3 | 4-10 | 11-fim', showIf: { mode: 'ranges' } }
+    ],
+    describe: (s) => `Pedaços gerados: <strong>${s.parts}</strong>`
+  },
+  organize: {
+    title: 'Reorganizar / Excluir Páginas',
+    desc: 'Diz quais páginas ficam e em que ordem. As que você não citar vão pro limbo sem direito a velório.',
+    button: 'REORGANIZAR',
+    phrase: 'Dança das cadeiras',
+    fields: [
+      { key: 'pages', type: 'text', label: 'Páginas, na ordem que você quer', placeholder: '3, 1, 2, 5-fim' }
+    ],
+    describe: (s) => `Páginas no resultado: <strong>${s.pages}</strong> · Mandadas pro limbo: <strong>${s.removed}</strong>`
+  },
+  rotate: {
+    title: 'Girar Páginas',
+    desc: 'Pro PDF que o estagiário escaneou de cabeça pra baixo. De novo.',
+    button: 'GIRAR',
+    phrase: 'Roda, roda, roda',
+    fields: [
+      { key: 'angle', type: 'select', label: 'Quanto girar', options: [
+        ['90', '90° pra direita'], ['180', '180° (de ponta-cabeça)'], ['270', '90° pra esquerda']
+      ] },
+      { key: 'pages', type: 'text', label: 'Só essas páginas (vazio = todas)', placeholder: '1, 3-5' }
+    ],
+    describe: (s) => `Páginas giradas: <strong>${s.rotated}</strong>`
+  },
+  nup: {
+    title: 'Várias Páginas por Folha',
+    desc: 'Enfia várias páginas numa folha A4. A árvore agradece, o oftalmologista também.',
+    button: 'ESPREMER NA FOLHA',
+    phrase: 'Economia de papel raivosa',
+    fields: [
+      { key: 'perSheet', type: 'select', label: 'Páginas por folha', options: [['2', '2 (lado a lado)'], ['4', '4'], ['6', '6'], ['9', '9 (boa sorte lendo)']] }
+    ],
+    describe: (s) => `Folhas geradas: <strong>${s.sheets}</strong>`
+  },
+  blank: {
+    title: 'Remover Páginas em Branco',
+    desc: 'Caça aquelas páginas vazias que o scanner cospe de brinde e joga fora.',
+    button: 'CAÇAR PÁGINA VAZIA',
+    phrase: 'Vazio existencial, não',
+    fields: [
+      { key: 'sensitivity', type: 'number', label: 'Sensibilidade (1 = só branco total, 10 = aceita sujeirinha)', value: 5, min: 1, max: 10 }
+    ],
+    describe: (s) => `Páginas removidas: <strong>${s.removed}</strong> (${esc((s.removedPages || []).join(', '))})<br>Sobraram: <strong>${s.pages}</strong>`
+  },
+  protect: {
+    title: 'Trancar a Sete Chaves',
+    desc: 'Põe senha no PDF (AES-256). Se esquecer a senha, nem nós, nem Deus.',
+    button: 'TRANCAR',
+    phrase: 'Cadeado no ódio',
+    fields: [
+      { key: 'password', type: 'password', label: 'Senha para abrir' },
+      { key: 'restrict', type: 'check', label: 'Bloquear impressão, cópia e edição também' }
+    ],
+    describe: (s) => `Trancado com AES-256${s.restricted ? ' e com restrições de impressão/cópia' : ''}.`
+  },
+  unlock: {
+    title: 'Tirar Senha',
+    desc: 'Remove a senha e as restrições do PDF. Precisa saber a senha, né? Aqui não é filme de hacker.',
+    button: 'DESTRANCAR',
+    phrase: 'Abre-te, sésamo',
+    fields: [
+      { key: 'password', type: 'password', label: 'Senha atual (vazio se só tiver restrição de impressão/cópia)' }
+    ],
+    describe: (s) => (s.wasEncrypted ? 'Senha arrancada com sucesso.' : 'Esse PDF nem tinha senha, mas tá aí limpinho.')
+  },
+  redact: {
+    title: 'Tarja Preta',
+    desc: 'Esconde CPF, CNPJ, e-mail, telefone ou o que você mandar. O texto some DE VERDADE, não é só um retângulo preto por cima (oi, órgão público).',
+    button: 'TARJAR',
+    phrase: 'Censura com carinho',
+    fields: [
+      { key: 'presets', type: 'checks', label: 'Tarjar automaticamente', options: [['cpf', 'CPF'], ['cnpj', 'CNPJ'], ['email', 'E-mail'], ['phone', 'Telefone']] },
+      { key: 'terms', type: 'textarea', label: 'Palavras ou frases (uma por linha)', placeholder: 'Fulano de Tal\nSalário' }
+    ],
+    describe: (s) => `Tarjas aplicadas: <strong>${s.redactions}</strong><br><em>Metadados também foram apagados.</em>`
+  },
+  sanitize: {
+    title: 'Exorcizar PDF',
+    desc: 'Tira o encosto do arquivo: JavaScript, anexos escondidos, metadados fofoqueiros e links suspeitos.',
+    button: 'EXORCIZAR',
+    phrase: 'Sai, capiroto',
+    fields: [
+      { key: 'javascript', type: 'check', label: 'Remover JavaScript e ações automáticas', value: true },
+      { key: 'attachments', type: 'check', label: 'Remover arquivos anexados', value: true },
+      { key: 'metadata', type: 'check', label: 'Remover metadados (autor, programa, datas)', value: true },
+      { key: 'links', type: 'check', label: 'Remover links externos' }
+    ],
+    describe: (s) => `JavaScript/ações: <strong>${s.javascript}</strong> · Anexos: <strong>${s.attachments}</strong> · Links: <strong>${s.links}</strong> · Metadados: <strong>${s.metadata}</strong>`
+  },
+  metadata: {
+    title: 'Metadados',
+    desc: 'Troca título, autor e afins. Ou apaga tudo, pra ninguém saber que foi você.',
+    button: 'REESCREVER A HISTÓRIA',
+    phrase: 'Álibi documental',
+    fields: [
+      { key: 'clear', type: 'check', label: 'Apagar todos os metadados (ignora os campos abaixo)' },
+      { key: 'title', type: 'text', label: 'Título', showIf: { clear: false } },
+      { key: 'author', type: 'text', label: 'Autor', showIf: { clear: false } },
+      { key: 'subject', type: 'text', label: 'Assunto', showIf: { clear: false } },
+      { key: 'keywords', type: 'text', label: 'Palavras-chave', showIf: { clear: false } }
+    ],
+    describe: (s) => {
+      const m = s.metadata || {};
+      const rows = ['title', 'author', 'subject', 'keywords'].filter((k) => m[k]).map((k) => `${k}: <strong>${esc(m[k])}</strong>`);
+      return rows.length ? rows.join('<br>') : 'Metadados apagados. Você nunca esteve aqui.';
+    }
+  },
+  watermark: {
+    title: 'Marca d\'Água',
+    desc: 'Carimba CONFIDENCIAL pra ninguém copiar. (Vão copiar.)',
+    button: 'CARIMBAR',
+    phrase: 'Marcando território',
+    fields: [
+      { key: 'text', type: 'text', label: 'Texto', value: 'CONFIDENCIAL' },
+      { key: 'fontSize', type: 'number', label: 'Tamanho da letra', value: 60, min: 8, max: 200 },
+      { key: 'opacity', type: 'number', label: 'Opacidade (%)', value: 25, min: 5, max: 100 },
+      { key: 'angle', type: 'number', label: 'Inclinação (graus)', value: 45, min: -90, max: 90 },
+      { key: 'color', type: 'color', label: 'Cor', value: '#8b0000' },
+      { key: 'tile', type: 'check', label: 'Repetir em mosaico pela página toda' }
+    ],
+    describe: (s) => `Páginas carimbadas: <strong>${s.pages}</strong>`
+  },
+  pagenumbers: {
+    title: 'Numerar Páginas',
+    desc: 'Põe número nas páginas. Porque "a página lá do meio" não é referência.',
+    button: 'NUMERAR',
+    phrase: 'Um, dois, três, ódio',
+    fields: [
+      { key: 'format', type: 'text', label: 'Formato ({n} = número, {total} = total)', value: 'Página {n} de {total}' },
+      { key: 'position', type: 'select', label: 'Posição', options: [
+        ['bottom-center', 'Embaixo, no meio'], ['bottom-right', 'Embaixo, à direita'], ['bottom-left', 'Embaixo, à esquerda'],
+        ['top-center', 'Em cima, no meio'], ['top-right', 'Em cima, à direita'], ['top-left', 'Em cima, à esquerda']
+      ] },
+      { key: 'start', type: 'number', label: 'Começar do número', value: 1 },
+      { key: 'fontSize', type: 'number', label: 'Tamanho da letra', value: 10, min: 6, max: 40 },
+      { key: 'skipFirst', type: 'check', label: 'Pular a capa (primeira página)' }
+    ],
+    describe: (s) => `Páginas numeradas: <strong>${s.pages}</strong>`
+  },
+  ocr: {
+    title: 'PDF Pesquisável (OCR)',
+    desc: 'Faz o PDF escaneado aceitar Ctrl+F e copiar texto. A aparência não muda nada: o robô escreve por baixo, invisível.',
+    button: 'LER NA MARRA',
+    phrase: 'O robô lê, você colhe',
+    fields: [
+      { key: 'force', type: 'check', label: 'Forçar OCR até nas páginas que já têm texto' }
+    ],
+    describe: (s) => `Páginas lidas pelo OCR: <strong>${s.ocrPages}</strong>${s.skipped ? ` · já tinham texto: <strong>${s.skipped}</strong>` : ''}`
+  },
+  flatten: {
+    title: 'Achatar',
+    desc: 'Formulários e anotações viram parte da página. Ninguém mais edita nada. Nem você.',
+    button: 'PASSAR O ROLO',
+    phrase: 'Rolo compressor',
+    fields: [],
+    describe: (s) => `Páginas achatadas: <strong>${s.pages}</strong>`
+  },
+  images: {
+    title: 'Extrair Imagens',
+    desc: 'Arranca as imagens originais de dentro do PDF, sem perda, num .zip.',
+    button: 'ARRANCAR IMAGENS',
+    phrase: 'Garimpo de pixel',
+    fields: [
+      { key: 'minSize', type: 'number', label: 'Ignorar imagens menores que (px)', value: 64, min: 1 }
+    ],
+    describe: (s) => `Imagens extraídas: <strong>${s.images}</strong>`
+  }
+};
+
+// --- Navegação lateral ---
+const ICONS = {
+  compress: 'M4 6h16l-3 3H7zM4 18h16l-3-3H7zM8 11h8v2H8z',
+  merge: 'M12 21C6 16 3 12 5 8c1.5-3 5-3 7 0 2-3 5.5-3 7 0 2 4-1 8-7 13z',
+  word: 'M6 3h9l4 4v14H6zM9 11l1.5 6 1.5-4 1.5 4 1.5-6',
+  image: 'M4 5h16v14H4zM8 10a1.5 1.5 0 1 0 0-.1M5 18l5-6 4 4 2-2 3 4',
+  text: 'M6 3h9l4 4v14H6zM9 10h7M9 14h7M9 18h4',
+  excel: 'M4 5h16v14H4zM4 10h16M4 15h16M10 5v14M15 5v14',
+  split: 'M6 3h7l4 4v5M6 3v18h6M14 15l6 6M20 15l-6 6',
+  organize: 'M4 5h7v6H4zM13 5h7v6h-7zM4 13h7v6H4zM13 13h7v6h-7z',
+  rotate: 'M20 12a8 8 0 1 1-3-6.2M20 4v5h-5',
+  nup: 'M3 5h8v14H3zM13 5h8v14h-8z',
+  blank: 'M6 3h9l4 4v14H6zM9 12l6 6M15 12l-6 6',
+  protect: 'M6 11h12v10H6zM8 11V7a4 4 0 0 1 8 0v4',
+  unlock: 'M6 11h12v10H6zM8 11V7a4 4 0 0 1 7.5-2',
+  redact: 'M6 3h9l4 4v14H6zM8 10h9v3H8zM8 15h6v3H8z',
+  sanitize: 'M12 3l7 3v6c0 5-3 8-7 9-4-1-7-4-7-9V6zM9 12l2 2 4-4',
+  metadata: 'M5 4h14v16H5zM8 8h8M8 12h8M8 16h5',
+  watermark: 'M12 3c3 4 6 7 6 11a6 6 0 0 1-12 0c0-4 3-7 6-11z',
+  pagenumbers: 'M6 3h9l4 4v14H6zM13 15h2M14 15v4M13 19h2',
+  ocr: 'M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3M8 9h8M8 12h8M8 15h5',
+  flatten: 'M4 17h16M6 13h12M8 9h8M10 5h4',
+  images: 'M4 5h16v14H4zM8 10a1.5 1.5 0 1 0 0-.1M5 18l5-6 4 4 2-2 3 4M17 2v5M14.5 4.5 17 7l2.5-2.5'
+};
+
+const NAV = [
+  ['Esmagar', [['compress', 'Comprimir']]],
+  ['Converter', [['word', 'Word ⇄ PDF'], ['image', 'Imagens ⇄ PDF'], ['text', 'PDF → Texto'], ['excel', 'PDF → Excel']]],
+  ['Organizar', [['merge', 'Juntar'], ['tool:split', 'Esquartejar'], ['tool:organize', 'Reorganizar / Excluir'],
+    ['tool:rotate', 'Girar'], ['tool:nup', 'Várias por folha'], ['tool:blank', 'Remover em branco']]],
+  ['Segurança', [['tool:protect', 'Trancar com senha'], ['tool:unlock', 'Tirar senha'], ['tool:redact', 'Tarja Preta'],
+    ['tool:sanitize', 'Exorcizar'], ['tool:metadata', 'Metadados']]],
+  ['Editar', [['tool:watermark', 'Marca d\'água'], ['tool:pagenumbers', 'Numerar páginas'], ['tool:ocr', 'PDF pesquisável (OCR)'],
+    ['tool:flatten', 'Achatar'], ['tool:images', 'Extrair imagens']]]
+];
+
+const PANES = ['compress', 'merge', 'word', 'image', 'text', 'excel', 'tools'];
+const sideNav = document.getElementById('sideNav');
+const sidebar = document.getElementById('sidebar');
+const navToggle = document.getElementById('navToggle');
+const navToggleLabel = document.getElementById('navToggleLabel');
+const navBackdrop = document.getElementById('navBackdrop');
+const navButtons = new Map();
+
+function svgIcon(d) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('class', 'side-icon');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('d', d);
+  svg.appendChild(path);
+  return svg;
+}
+
+NAV.forEach(([group, items]) => {
+  const title = document.createElement('p');
+  title.className = 'side-group';
+  title.textContent = group;
+  sideNav.appendChild(title);
+  items.forEach(([key, label]) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'side-item';
+    btn.appendChild(svgIcon(ICONS[key.replace('tool:', '')] || ICONS.text));
+    const span = document.createElement('span');
+    span.textContent = label;
+    btn.appendChild(span);
+    btn.addEventListener('click', () => activate(key));
+    sideNav.appendChild(btn);
+    navButtons.set(key, { btn, label });
+  });
+});
+
+function setNavOpen(open) {
+  sidebar.classList.toggle('open', open);
+  navBackdrop.classList.toggle('hidden', !open);
+  navToggle.setAttribute('aria-expanded', String(open));
+}
+
+navToggle.addEventListener('click', () => setNavOpen(!sidebar.classList.contains('open')));
+navBackdrop.addEventListener('click', () => setNavOpen(false));
+
+function activate(key, { updateHash = true } = {}) {
+  if (!navButtons.has(key)) key = 'compress';
+  const isTool = key.startsWith('tool:');
+  const pane = isTool ? 'tools' : key;
+  PANES.forEach((id) => document.getElementById(`tab-${id}`).classList.toggle('hidden', id !== pane));
+  navButtons.forEach(({ btn }, k) => {
+    btn.classList.toggle('active', k === key);
+    if (k === key) btn.setAttribute('aria-current', 'page');
+    else btn.removeAttribute('aria-current');
+  });
+  if (isTool) selectTool(key.slice(5));
+  navToggleLabel.textContent = navButtons.get(key).label;
+  resultEl.classList.add('hidden');
+  setNavOpen(false);
+  if (updateHash) history.replaceState(null, '', `#${key.replace('tool:', '')}`);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// --- Painel do Arsenal ---
+const toolTitle = document.getElementById('toolTitle');
+const toolDesc = document.getElementById('toolDesc');
+const toolOptions = document.getElementById('toolOptions');
+const toolBtn = document.getElementById('toolBtn');
+const toolBtnLabel = document.getElementById('toolBtnLabel');
+const toolPhrase = document.getElementById('toolPhrase');
+const toolInput = document.getElementById('toolInput');
+const toolFileName = document.getElementById('toolFileName');
+const toolDropzone = document.getElementById('toolDropzone');
+let currentTool = null;
+let toolFile = null;
+let toolControls = {};
+
+function buildField(field) {
+  const wrap = document.createElement('div');
+  wrap.className = 'field';
+  wrap.dataset.key = field.key;
+  const id = `opt_${field.key}`;
+  let control;
+
+  if (field.type === 'check') {
+    control = document.createElement('input');
+    control.type = 'checkbox';
+    control.id = id;
+    control.checked = Boolean(field.value);
+    const span = document.createElement('span');
+    span.textContent = field.label;
+    const label = document.createElement('label');
+    label.className = 'check-row';
+    label.dataset.key = field.key;
+    label.append(control, span);
+    toolControls[field.key] = { field, get: () => control.checked, el: label, input: control };
+    return label;
+  }
+
+  const label = document.createElement('label');
+  label.className = 'field-label';
+  label.htmlFor = id;
+  label.textContent = field.label;
+  wrap.appendChild(label);
+
+  if (field.type === 'checks') {
+    const group = document.createElement('div');
+    group.className = 'checks-inline';
+    const boxes = field.options.map(([value, text]) => {
+      const l = document.createElement('label');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = value;
+      const t = document.createElement('span');
+      t.textContent = text;
+      l.append(cb, t);
+      group.appendChild(l);
+      return cb;
+    });
+    wrap.appendChild(group);
+    toolControls[field.key] = { field, get: () => boxes.filter((b) => b.checked).map((b) => b.value), el: wrap };
+    return wrap;
+  }
+
+  if (field.type === 'select') {
+    control = document.createElement('select');
+    control.className = 'paper-size-select';
+    field.options.forEach(([value, text]) => {
+      const o = document.createElement('option');
+      o.value = value;
+      o.textContent = text;
+      control.appendChild(o);
+    });
+  } else if (field.type === 'textarea') {
+    control = document.createElement('textarea');
+    control.className = 'text-input';
+    control.rows = 4;
+  } else {
+    control = document.createElement('input');
+    control.type = field.type;
+    control.className = field.type === 'color' ? 'color-input' : 'text-input';
+    if (field.type === 'number') {
+      control.inputMode = 'decimal';
+      if (field.min !== undefined) control.min = field.min;
+      if (field.max !== undefined) control.max = field.max;
+    }
+    if (field.type === 'password') control.autocomplete = 'off';
+  }
+  control.id = id;
+  if (field.placeholder) control.placeholder = field.placeholder;
+  if (field.value !== undefined) control.value = field.value;
+  wrap.appendChild(control);
+  toolControls[field.key] = { field, get: () => control.value, el: wrap, input: control };
+  return wrap;
+}
+
+function refreshVisibility() {
+  Object.values(toolControls).forEach(({ field, el }) => {
+    if (!field.showIf) return;
+    const visible = Object.entries(field.showIf).every(([k, v]) => {
+      const other = toolControls[k];
+      return other && other.get() === v;
+    });
+    el.classList.toggle('hidden', !visible);
+  });
+}
+
+function selectTool(name) {
+  const def = TOOL_DEFS[name];
+  currentTool = name;
+  toolControls = {};
+  toolTitle.textContent = def.title;
+  toolDesc.textContent = def.desc;
+  toolBtnLabel.textContent = def.button;
+  toolPhrase.textContent = def.phrase;
+  toolOptions.innerHTML = '';
+  def.fields.forEach((f) => toolOptions.appendChild(buildField(f)));
+  if (!def.fields.length) {
+    const p = document.createElement('p');
+    p.className = 'hint';
+    p.textContent = 'Sem opções. É só mandar o PDF e apertar o botão, sem frescura.';
+    toolOptions.appendChild(p);
+  }
+  Object.values(toolControls).forEach(({ input }) => input && input.addEventListener('change', refreshVisibility));
+  refreshVisibility();
+}
+
+function collectOptions() {
+  const opts = {};
+  Object.entries(toolControls).forEach(([key, { field, el, get }]) => {
+    if (el.classList.contains('hidden')) return;
+    let value = get();
+    if (field.type === 'number') value = value === '' ? undefined : Number(value);
+    if (value !== undefined) opts[key] = value;
+  });
+  return opts;
+}
+
+function setToolFile(f) {
+  if (!f) return;
+  if (!f.name.toLowerCase().endsWith('.pdf')) {
+    showError('Arquivo precisa ser PDF.');
+    return;
+  }
+  toolFile = f;
+  toolFileName.textContent = `${f.name} (${formatBytes(f.size)})`;
+  toolBtn.disabled = false;
+}
+
+function resetTool() {
+  toolFile = null;
+  toolInput.value = '';
+  toolFileName.textContent = '';
+  toolBtn.disabled = true;
+}
+
+document.getElementById('toolBrowseBtn').addEventListener('click', (e) => { e.stopPropagation(); toolInput.click(); });
+toolDropzone.addEventListener('click', () => toolInput.click());
+toolInput.addEventListener('change', (e) => { if (e.target.files[0]) setToolFile(e.target.files[0]); });
+['dragenter', 'dragover'].forEach(ev => toolDropzone.addEventListener(ev, (e) => { e.preventDefault(); toolDropzone.classList.add('dragover'); }));
+['dragleave', 'drop'].forEach(ev => toolDropzone.addEventListener(ev, (e) => { e.preventDefault(); toolDropzone.classList.remove('dragover'); }));
+toolDropzone.addEventListener('drop', (e) => { const f = e.dataTransfer.files[0]; if (f) setToolFile(f); });
+resetBtn.addEventListener('click', resetTool);
+
+LOADING_MESSAGES.tools = [
+  'Afiando a faca...',
+  'Aplicando violência controlada no PDF...',
+  'O PDF pediu arrego, mas continuamos...',
+  'Fazendo o serviço sujo por você...',
+  'Quase lá. O PDF já está chorando...'
+];
+
+toolBtn.addEventListener('click', async () => {
+  if (!toolFile || !currentTool) return;
+  const def = TOOL_DEFS[currentTool];
+  const formData = new FormData();
+  formData.append('pdf', toolFile);
+  formData.append('options', JSON.stringify(collectOptions()));
+
+  startLoading('tools');
+  resultEl.classList.add('hidden');
+  toolBtn.disabled = true;
+  try {
+    const data = await postForm(`/api/tool/${currentTool}`, formData);
+    await showResult({
+      info: `${def.describe(data.stats || {})}<br>Tamanho: <strong>${formatBytes(data.size)}</strong>`,
+      label: data.ext === 'zip' ? 'BAIXAR ZIP' : 'BAIXAR PDF',
+      id: data.id,
+      outName: data.originalName
+    });
+  } catch (err) {
+    stopLoading(false);
+    showError(err.message);
+  } finally {
+    loadingEl.classList.add('hidden');
+    toolBtn.disabled = !toolFile;
+  }
+});
+
+// Abre a ferramenta do link (#tarja, #comprimir...) ou a compressão
+(function initNav() {
+  const hash = decodeURIComponent(location.hash.slice(1));
+  const key = navButtons.has(hash) ? hash : (TOOL_DEFS[hash] ? `tool:${hash}` : 'compress');
+  activate(key, { updateHash: Boolean(location.hash) });
+})();

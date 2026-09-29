@@ -16,87 +16,18 @@
     <p class="subtitle">Não faça amor. Faça Guerra!</p>
   </header>
 
+  <button type="button" id="navToggle" class="nav-toggle" aria-controls="sidebar" aria-expanded="false">
+    <span class="nav-toggle-bars" aria-hidden="true"></span>
+    <span id="navToggleLabel">Ferramentas</span>
+  </button>
+
+  <div class="layout">
+  <aside id="sidebar" class="sidebar" aria-label="Ferramentas">
+    <nav id="sideNav"></nav>
+  </aside>
+  <div id="navBackdrop" class="nav-backdrop hidden"></div>
+
   <main>
-    <nav class="tabs">
-      <button type="button" class="tab-btn active" data-tab="compress">
-        <svg class="tab-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-          <defs>
-            <linearGradient id="crushGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stop-color="#ff2a4d"/>
-              <stop offset="100%" stop-color="#8b0000"/>
-            </linearGradient>
-          </defs>
-          <path d="M8 12 L40 12 L36 16 L12 16 Z" fill="url(#crushGrad)" stroke="#000" stroke-width="1.5" stroke-linejoin="round"/>
-          <path d="M8 36 L40 36 L36 32 L12 32 Z" fill="url(#crushGrad)" stroke="#000" stroke-width="1.5" stroke-linejoin="round"/>
-          <path d="M14 19 L34 19 L32 24 L34 29 L14 29 L16 24 Z" fill="#1a0a0d" stroke="#ff2a4d" stroke-width="1.5" stroke-linejoin="round"/>
-          <path d="M19 22 L29 26 M29 22 L19 26" stroke="#ff2a4d" stroke-width="1.5" stroke-linecap="round"/>
-        </svg>
-        <span>COMPRIMIR</span>
-      </button>
-      <button type="button" class="tab-btn" data-tab="merge">
-        <svg class="tab-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-          <defs>
-            <linearGradient id="mergeGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stop-color="#ff2a4d"/>
-              <stop offset="100%" stop-color="#8b0000"/>
-            </linearGradient>
-          </defs>
-          <path d="M24 40 C 12 30, 6 22, 11 14 C 14 8, 22 9, 24 14 C 26 9, 34 8, 37 14 C 42 22, 36 30, 24 40 Z"
-                fill="url(#mergeGrad)" stroke="#000" stroke-width="1.5" stroke-linejoin="round"/>
-          <path d="M24 14 L 21 20 L 27 24 L 20 28 L 26 33 L 24 40"
-                fill="none" stroke="#000" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-          <path d="M14 6 L20 12 M14 12 L20 6" stroke="#ff2a4d" stroke-width="2" stroke-linecap="round"/>
-          <path d="M28 6 L34 12 M28 12 L34 6" stroke="#ff2a4d" stroke-width="2" stroke-linecap="round"/>
-        </svg>
-        <span>JUNTAR</span>
-      </button>
-      <button type="button" class="tab-btn" data-tab="word">
-        <svg class="tab-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-          <defs>
-            <linearGradient id="wordGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stop-color="#ff2a4d"/>
-              <stop offset="100%" stop-color="#8b0000"/>
-            </linearGradient>
-          </defs>
-          <path d="M11 5 L29 5 L37 13 L37 43 L11 43 Z" fill="#1a0a0d" stroke="url(#wordGrad)" stroke-width="2" stroke-linejoin="round"/>
-          <path d="M29 5 L29 13 L37 13" fill="none" stroke="url(#wordGrad)" stroke-width="2" stroke-linejoin="round"/>
-          <path d="M16 24 L19 34 L21.5 26 L24 34 L27 24" fill="none" stroke="#ff2a4d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M8 16 L18 22 M18 16 L8 22" stroke="#ff2a4d" stroke-width="1.6" stroke-linecap="round"/>
-        </svg>
-        <span>WORD</span>
-      </button>
-      <button type="button" class="tab-btn" data-tab="image">
-        <svg class="tab-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-          <defs>
-            <linearGradient id="imgGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stop-color="#ff2a4d"/>
-              <stop offset="100%" stop-color="#8b0000"/>
-            </linearGradient>
-          </defs>
-          <rect x="7" y="9" width="34" height="30" rx="3" fill="#1a0a0d" stroke="url(#imgGrad)" stroke-width="2"/>
-          <circle cx="17" cy="19" r="3.5" fill="#ff2a4d"/>
-          <path d="M11 35 L21 24 L28 31 L33 26 L37 35 Z" fill="none" stroke="#ff2a4d" stroke-width="2" stroke-linejoin="round"/>
-        </svg>
-        <span>IMAGENS</span>
-      </button>
-      <button type="button" class="tab-btn" data-tab="text">
-        <svg class="tab-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-          <path d="M11 5 L29 5 L37 13 L37 43 L11 43 Z" fill="#1a0a0d" stroke="#ff2a4d" stroke-width="2" stroke-linejoin="round"/>
-          <path d="M29 5 L29 13 L37 13" fill="none" stroke="#ff2a4d" stroke-width="2" stroke-linejoin="round"/>
-          <path d="M16 20 H32 M16 26 H32 M16 32 H26" stroke="#ff2a4d" stroke-width="2" stroke-linecap="round"/>
-          <path d="M14 10 H22" stroke="#555" stroke-width="2" stroke-linecap="round" stroke-dasharray="2 3"/>
-        </svg>
-        <span>TEXTO</span>
-      </button>
-      <button type="button" class="tab-btn" data-tab="excel">
-        <svg class="tab-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-          <rect x="8" y="9" width="32" height="30" rx="3" fill="#1a0a0d" stroke="#ff2a4d" stroke-width="2"/>
-          <path d="M8 18 H40 M8 27 H40 M19 9 V39 M30 9 V39" stroke="#ff2a4d" stroke-width="1.6"/>
-          <path d="M8 9 H40 V18 H8 Z" fill="#8b0000" opacity="0.7"/>
-        </svg>
-        <span>EXCEL</span>
-      </button>
-    </nav>
 
     <div id="tab-compress" class="tab-pane">
       <section id="dropzone" class="dropzone">
@@ -463,6 +394,36 @@
       </div>
     </div>
 
+    <div id="tab-tools" class="tab-pane hidden">
+
+      <section id="toolDropzone" class="dropzone">
+        <input type="file" id="toolInput" accept="application/pdf,.pdf" hidden />
+        <div class="dz-inner">
+          <svg class="dz-icon" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+            <path d="M24 10 L60 10 L76 26 L76 90 L24 90 Z" fill="#1a0a0d" stroke="#ff2a4d" stroke-width="3" stroke-linejoin="round"/>
+            <path d="M60 10 L60 26 L76 26" fill="none" stroke="#ff2a4d" stroke-width="3" stroke-linejoin="round"/>
+            <path d="M36 72 L64 44 M52 42 L66 42 L66 56" stroke="#ff2a4d" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <p class="dz-text">Arraste a vítima (PDF) aqui</p>
+          <p class="dz-sub">ou <button type="button" id="toolBrowseBtn" class="link-btn">clique para escolher</button></p>
+          <p id="toolFileName" class="file-name"></p>
+        </div>
+      </section>
+
+      <section id="toolOptionsSection" class="compression-section">
+        <h2 id="toolTitle"></h2>
+        <p id="toolDesc" class="hint tool-desc"></p>
+        <div id="toolOptions" class="tool-options"></div>
+      </section>
+
+      <div class="action-wrap">
+        <button id="toolBtn" class="primary-btn btn-compress" disabled>
+          <span class="btn-label" id="toolBtnLabel">MANDA VER</span>
+          <span class="btn-sub" id="toolPhrase">Escolhe a arma e o alvo</span>
+        </button>
+      </div>
+    </div>
+
     <section id="loading" class="loading hidden">
       <div class="heart-loader" id="heartLoader" aria-label="Progresso do processamento">
         <img class="heart-progress-base" src="logo.svg" alt="" />
@@ -484,6 +445,7 @@
 
     <section id="errorBox" class="error hidden" role="alert"></section>
   </main>
+  </div>
 
   <footer>
     <p>I HATE PDF &copy; 2026 - Feito com ódio aos PDFs! E também todo o resto.</p>

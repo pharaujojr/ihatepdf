@@ -38,6 +38,7 @@ const MERGE_SCRIPT = path.join(TOOLS, 'merge_pdf.py');
 const OPTIMIZE_SCRIPT = path.join(TOOLS, 'optimize_pdf.py');
 const TEXT_SCRIPT = path.join(TOOLS, 'pdf_to_text.py');
 const EXCEL_SCRIPT = path.join(TOOLS, 'pdf_to_excel.py');
+const TOOLS_SCRIPT = path.join(TOOLS, 'pdf_tools.py');
 const LO_HARDENING = path.join(TOOLS, 'lo-registrymodifications.xcu');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -719,6 +720,72 @@ app.post('/api/excel', uploadPdf.single('pdf'), job(async (req, { jobDir }) => {
   }
   const out = await publish(output, 'xlsx');
   return { ...out, originalName: req.file.originalname, stats };
+}));
+
+// --- Ferramentas avulsas (tools/pdf_tools.py) ----------------------------------
+
+const PDF_TOOLS = {
+  split: { suffix: 'dividido', error: 'Falha ao dividir o PDF.' },
+  organize: { suffix: 'organizado', error: 'Falha ao reorganizar as páginas.' },
+  rotate: { suffix: 'girado', error: 'Falha ao girar as páginas.' },
+  unlock: { suffix: 'destrancado', error: 'Falha ao tirar a senha.' },
+  protect: { suffix: 'trancado', error: 'Falha ao pôr a senha.' },
+  watermark: { suffix: 'marcado', error: 'Falha ao aplicar a marca d\'água.' },
+  pagenumbers: { suffix: 'numerado', error: 'Falha ao numerar as páginas.' },
+  ocr: { suffix: 'pesquisavel', error: 'Falha no OCR.', timeout: 1800000 },
+  sanitize: { suffix: 'limpo', error: 'Falha ao limpar o PDF.' },
+  blank: { suffix: 'sem_brancas', error: 'Falha ao procurar páginas em branco.' },
+  images: { suffix: 'imagens', error: 'Falha ao extrair as imagens.' },
+  flatten: { suffix: 'achatado', error: 'Falha ao achatar o PDF.' },
+  metadata: { suffix: 'metadados', error: 'Falha ao mexer nos metadados.' },
+  nup: { suffix: 'varias_por_folha', error: 'Falha ao montar as folhas.' },
+  redact: { suffix: 'tarjado', error: 'Falha ao tarjar o PDF.' }
+};
+
+app.post('/api/tool/:tool', uploadPdf.single('pdf'), job(async (req, { jobDir }) => {
+  const tool = req.params.tool;
+  const meta = Object.prototype.hasOwnProperty.call(PDF_TOOLS, tool) ? PDF_TOOLS[tool] : null;
+  if (!meta) throw new UserError('Ferramenta desconhecida.');
+  if (!req.file) throw new UserError('Nenhum arquivo enviado.');
+
+  const rawOptions = String(req.body.options || '{}');
+  if (rawOptions.length > 10000) throw new UserError('Opções grandes demais.');
+  let options;
+  try {
+    options = JSON.parse(rawOptions);
+  } catch (_) {
+    throw new UserError('Opções inválidas.');
+  }
+  if (!options || typeof options !== 'object' || Array.isArray(options)) throw new UserError('Opções inválidas.');
+
+  const base = path.basename(req.file.originalname, path.extname(req.file.originalname))
+    .replace(/[^\p{L}\p{N}_-]+/gu, '_').slice(0, 60) || 'documento';
+  options._base = base;
+
+  const input = await stage(req.file, jobDir, 'entrada.pdf');
+  const outDir = path.join(jobDir, 'saida');
+  await fsp.mkdir(outDir);
+  const optsPath = path.join(jobDir, 'opcoes.json');
+  await fsp.writeFile(optsPath, JSON.stringify(options));
+
+  let stats;
+  try {
+    const { stdout } = await withSlot(() => run('python3', [TOOLS_SCRIPT, tool, input, outDir, optsPath],
+      { timeout: meta.timeout || 600000 }));
+    stats = parseStats(stdout);
+  } catch (err) {
+    // Código 5 = erro "do usuário", com a mensagem na última linha do stderr
+    if (err && err.code === 5) {
+      const msg = String(err.stderr || '').trim().split('\n').pop();
+      throw new UserError(msg || meta.error);
+    }
+    throw scriptError(err, `${meta.error} O PDF pode estar corrompido.`);
+  }
+  if (!stats.file || stats.file.includes('/')) throw new UserError(meta.error, 500);
+
+  const out = await publish(path.join(outDir, stats.file), stats.ext);
+  const { file: _f, ext: _e, ...rest } = stats;
+  return { ...out, originalName: `${base}_${meta.suffix}.${stats.ext}`, stats: rest };
 }));
 
 // --- Download ------------------------------------------------------------------

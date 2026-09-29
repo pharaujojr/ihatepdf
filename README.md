@@ -1,7 +1,21 @@
 # I HATE PDF
 
-Canivete suíço de PDF auto-hospedado: comprimir, juntar, Word ⇄ PDF, imagens ⇄ PDF,
-PDF → Texto (sem cabeçalho/rodapé, com OCR) e PDF → Excel (tabelas com e sem grade).
+Canivete suíço de PDF auto-hospedado, com barra lateral de ferramentas:
+
+- **Esmagar:** comprimir (4 perfis, tons de cinza, tamanho máximo em MB).
+- **Converter:** Word ⇄ PDF, imagens ⇄ PDF, PDF → Texto (sem cabeçalho/rodapé, com OCR),
+  PDF → Excel (tabelas com e sem grade).
+- **Organizar:** juntar, esquartejar (dividir), reorganizar/excluir páginas, girar,
+  várias páginas por folha, remover páginas em branco.
+- **Segurança:** trancar com senha (AES-256), tirar senha, tarja preta (CPF, CNPJ, e-mail,
+  telefone, termos livres — remove o texto de verdade), exorcizar (remove JavaScript,
+  anexos, metadados, links) e editar metadados.
+- **Editar:** marca d'água, numerar páginas, PDF pesquisável (OCR invisível), achatar
+  formulários/anotações, extrair imagens.
+
+As ferramentas avulsas ficam em `tools/pdf_tools.py` (inspiradas no Stirling-PDF,
+reimplementadas com PyMuPDF, pikepdf e Tesseract). Cada ferramenta tem link direto:
+`http://host:666/#redact`, `#split`, `#ocr`...
 
 ## Compressões disponíveis
 
