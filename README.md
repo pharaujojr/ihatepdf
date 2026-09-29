@@ -10,6 +10,10 @@ Canivete suíço de PDF auto-hospedado, com barra lateral de ferramentas:
 - **Segurança:** trancar com senha (AES-256), tirar senha, tarja preta (CPF, CNPJ, e-mail,
   telefone, termos livres — remove o texto de verdade), exorcizar (remove JavaScript,
   anexos, metadados, links) e editar metadados.
+- **Editar PDF (TESTE):** editor visual no navegador — reescreve o texto que já está no PDF
+  (reaproveita a fonte original quando ela tem as letras; senão usa Liberation equivalente),
+  adiciona texto, assinatura desenhada ou em imagem, imagens/carimbos, marca-texto, retângulo,
+  corretivo, tarja preta real e preenche formulários (com opção de achatar).
 - **Editar:** marca d'água, numerar páginas, PDF pesquisável (OCR invisível), achatar
   formulários/anotações, extrair imagens.
 

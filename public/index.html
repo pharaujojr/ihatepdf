@@ -394,6 +394,76 @@
       </div>
     </div>
 
+    <div id="tab-editor" class="tab-pane hidden">
+      <div class="test-banner" role="note">
+        <strong>TESTE</strong>
+        <span>Editor em fase de teste. Pode funcionar lindamente ou te fazer odiar PDF ainda mais. Confira o resultado antes de mandar pro chefe.</span>
+      </div>
+
+      <section id="edDropzone" class="dropzone">
+        <input type="file" id="edInput" accept="application/pdf,.pdf" hidden />
+        <div class="dz-inner">
+          <svg class="dz-icon" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+            <path d="M24 10 L60 10 L76 26 L76 90 L24 90 Z" fill="#1a0a0d" stroke="#ff2a4d" stroke-width="3" stroke-linejoin="round"/>
+            <path d="M60 10 L60 26 L76 26" fill="none" stroke="#ff2a4d" stroke-width="3" stroke-linejoin="round"/>
+            <path d="M36 74 L40 60 L64 36 L72 44 L48 68 Z" fill="#8b0000" stroke="#ff2a4d" stroke-width="3" stroke-linejoin="round"/>
+            <path d="M60 40 L68 48" stroke="#ff2a4d" stroke-width="3"/>
+          </svg>
+          <p class="dz-text">Arraste o PDF que você quer adulterar</p>
+          <p class="dz-sub">ou <button type="button" id="edBrowseBtn" class="link-btn">clique para escolher</button></p>
+        </div>
+      </section>
+
+      <div id="edWorkspace" class="hidden">
+        <div class="ed-toolbar" id="edToolbar" role="toolbar" aria-label="Ferramentas do editor">
+          <div class="ed-modes">
+            <button type="button" class="ed-mode active" data-mode="select" title="Clique num texto do PDF para editar">Editar texto</button>
+            <button type="button" class="ed-mode" data-mode="text" title="Clique na página para escrever">Texto novo</button>
+            <button type="button" class="ed-mode" data-mode="sign" title="Desenhe ou envie sua assinatura">Assinatura</button>
+            <button type="button" class="ed-mode" data-mode="image" title="Insira uma imagem ou carimbo">Imagem</button>
+            <button type="button" class="ed-mode" data-mode="highlight" title="Arraste para marcar">Marca-texto</button>
+            <button type="button" class="ed-mode" data-mode="rect" title="Arraste para desenhar">Retângulo</button>
+            <button type="button" class="ed-mode" data-mode="whiteout" title="Arraste para cobrir de branco">Corretivo</button>
+            <button type="button" class="ed-mode" data-mode="redact" title="Arraste para apagar de verdade">Tarja</button>
+          </div>
+          <div class="ed-props">
+            <label>Cor <input type="color" id="edColor" value="#000000" /></label>
+            <label>Tamanho <input type="number" id="edSize" value="12" min="4" max="200" inputmode="decimal" /></label>
+            <label class="ed-bold"><input type="checkbox" id="edBold" /> Negrito</label>
+            <button type="button" id="edDelete" class="ed-action" disabled>Apagar selecionado</button>
+            <button type="button" id="edUndo" class="ed-action" disabled>Desfazer</button>
+          </div>
+        </div>
+        <p id="edHint" class="hint ed-hint"></p>
+        <div id="edPages" class="ed-pages"></div>
+
+        <div class="ed-footer">
+          <label class="check-row" id="edFlattenRow">
+            <input type="checkbox" id="edFlatten" />
+            <span>Achatar os formulários depois de preencher (ninguém mais muda)</span>
+          </label>
+          <button id="edSaveBtn" class="primary-btn btn-compress" disabled>
+            <span class="btn-label">SALVAR A ADULTERAÇÃO</span>
+            <span class="btn-sub" id="edSaveSub">Nenhuma alteração ainda</span>
+          </button>
+          <button type="button" id="edCloseBtn" class="link-btn">Largar esse PDF e abrir outro</button>
+        </div>
+      </div>
+
+      <input type="file" id="edImageInput" accept="image/png,image/jpeg" hidden />
+      <dialog id="edSignDialog" class="ed-dialog">
+        <h3>Sua assinatura (ou rabisco equivalente)</h3>
+        <canvas id="edSignCanvas" width="600" height="220"></canvas>
+        <div class="ed-dialog-actions">
+          <button type="button" id="edSignClear" class="link-btn">Limpar</button>
+          <button type="button" id="edSignUpload" class="link-btn">Enviar imagem da assinatura</button>
+          <span class="spacer"></span>
+          <button type="button" id="edSignCancel" class="ed-action">Cancelar</button>
+          <button type="button" id="edSignOk" class="ed-action primary">Usar</button>
+        </div>
+      </dialog>
+    </div>
+
     <div id="tab-tools" class="tab-pane hidden">
 
       <section id="toolDropzone" class="dropzone">
@@ -452,5 +522,6 @@
   </footer>
 
   <script src="app.js"></script>
+  <script src="editor.js"></script>
 </body>
 </html>

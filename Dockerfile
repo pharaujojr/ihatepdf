@@ -44,7 +44,7 @@ COPY public ./public
 COPY tools ./tools
 
 # Roda sem root: só as pastas de trabalho são graváveis
-RUN mkdir -p uploads outputs work && chown -R node:node uploads outputs work
+RUN mkdir -p uploads outputs work editor && chown -R node:node uploads outputs work editor
 USER node
 
 # LibreOffice precisa de HOME gravável

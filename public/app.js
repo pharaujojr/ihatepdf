@@ -1071,6 +1071,7 @@ const ICONS = {
   redact: 'M6 3h9l4 4v14H6zM8 10h9v3H8zM8 15h6v3H8z',
   sanitize: 'M12 3l7 3v6c0 5-3 8-7 9-4-1-7-4-7-9V6zM9 12l2 2 4-4',
   metadata: 'M5 4h14v16H5zM8 8h8M8 12h8M8 16h5',
+  editor: 'M4 20h4L19 9l-4-4L4 16zM13 7l4 4',
   watermark: 'M12 3c3 4 6 7 6 11a6 6 0 0 1-12 0c0-4 3-7 6-11z',
   pagenumbers: 'M6 3h9l4 4v14H6zM13 15h2M14 15v4M13 19h2',
   ocr: 'M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3M8 9h8M8 12h8M8 15h5',
@@ -1085,11 +1086,11 @@ const NAV = [
     ['tool:rotate', 'Girar'], ['tool:nup', 'Várias por folha'], ['tool:blank', 'Remover em branco']]],
   ['Segurança', [['tool:protect', 'Trancar com senha'], ['tool:unlock', 'Tirar senha'], ['tool:redact', 'Tarja Preta'],
     ['tool:sanitize', 'Exorcizar'], ['tool:metadata', 'Metadados']]],
-  ['Editar', [['tool:watermark', 'Marca d\'água'], ['tool:pagenumbers', 'Numerar páginas'], ['tool:ocr', 'PDF pesquisável (OCR)'],
+  ['Editar', [['editor', 'Editar PDF', 'TESTE'], ['tool:watermark', 'Marca d\'água'], ['tool:pagenumbers', 'Numerar páginas'], ['tool:ocr', 'PDF pesquisável (OCR)'],
     ['tool:flatten', 'Achatar'], ['tool:images', 'Extrair imagens']]]
 ];
 
-const PANES = ['compress', 'merge', 'word', 'image', 'text', 'excel', 'tools'];
+const PANES = ['compress', 'merge', 'word', 'image', 'text', 'excel', 'editor', 'tools'];
 const sideNav = document.getElementById('sideNav');
 const sidebar = document.getElementById('sidebar');
 const navToggle = document.getElementById('navToggle');
@@ -1114,7 +1115,7 @@ NAV.forEach(([group, items]) => {
   title.className = 'side-group';
   title.textContent = group;
   sideNav.appendChild(title);
-  items.forEach(([key, label]) => {
+  items.forEach(([key, label, badge]) => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'side-item';
@@ -1122,6 +1123,12 @@ NAV.forEach(([group, items]) => {
     const span = document.createElement('span');
     span.textContent = label;
     btn.appendChild(span);
+    if (badge) {
+      const b = document.createElement('span');
+      b.className = 'side-badge';
+      b.textContent = badge;
+      btn.appendChild(b);
+    }
     btn.addEventListener('click', () => activate(key));
     sideNav.appendChild(btn);
     navButtons.set(key, { btn, label });

@@ -5,3 +5,4 @@ work/
 *.log
 .env
 .DS_Store
+editor/

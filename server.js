@@ -32,6 +32,8 @@ const OUTPUT_PREFIX = 'comprimido_';
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 const OUTPUT_DIR = path.join(__dirname, 'outputs');
 const WORK_DIR = path.join(__dirname, 'work');
+const EDITOR_DIR = path.join(__dirname, 'editor');
+const EDITOR_TTL_MS = 2 * 60 * 60 * 1000;
 const TOOLS = path.join(__dirname, 'tools');
 const LANG_SCRIPT = path.join(TOOLS, 'fix_docx_lang.py');
 const MERGE_SCRIPT = path.join(TOOLS, 'merge_pdf.py');
@@ -39,10 +41,12 @@ const OPTIMIZE_SCRIPT = path.join(TOOLS, 'optimize_pdf.py');
 const TEXT_SCRIPT = path.join(TOOLS, 'pdf_to_text.py');
 const EXCEL_SCRIPT = path.join(TOOLS, 'pdf_to_excel.py');
 const TOOLS_SCRIPT = path.join(TOOLS, 'pdf_tools.py');
+const EDITOR_SCRIPT = path.join(TOOLS, 'pdf_editor.py');
 const LO_HARDENING = path.join(TOOLS, 'lo-registrymodifications.xcu');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 fs.mkdirSync(WORK_DIR, { recursive: true });
+fs.mkdirSync(EDITOR_DIR, { recursive: true });
 
 const PDF_EXT = ['.pdf'];
 const WORD_EXT = ['.doc', '.docx', '.odt', '.rtf', '.txt'];
@@ -198,6 +202,7 @@ function sweepAll() {
   sweepDir(OUTPUT_DIR, FILE_RETENTION_MS, (name) => name.startsWith(OUTPUT_PREFIX));
   sweepDir(UPLOAD_DIR, STALE_WORK_MS);
   sweepDir(WORK_DIR, STALE_WORK_MS);
+  sweepDir(EDITOR_DIR, EDITOR_TTL_MS);
 }
 
 sweepAll();
@@ -279,7 +284,11 @@ app.use((_req, res, next) => {
   next();
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+// no-cache = o navegador sempre revalida (304 barato): depois de um deploy
+// ninguém fica preso a um app.js/editor.js antigo
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res) => res.set('Cache-Control', 'no-cache')
+}));
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, running: runningJobs, queued: jobQueue.length });
@@ -786,6 +795,89 @@ app.post('/api/tool/:tool', uploadPdf.single('pdf'), job(async (req, { jobDir })
   const out = await publish(path.join(outDir, stats.file), stats.ext);
   const { file: _f, ext: _e, ...rest } = stats;
   return { ...out, originalName: `${base}_${meta.suffix}.${stats.ext}`, stats: rest };
+}));
+
+// --- Editor de PDF (TESTE) -------------------------------------------------------
+// A sessão guarda o PDF normalizado e as imagens das páginas por até 2 h sem uso.
+
+function sessionDir(id) {
+  if (!/^[a-f0-9]{32}$/.test(String(id))) throw new UserError('Sessão inválida.', 404);
+  return path.join(EDITOR_DIR, id);
+}
+
+async function touchSession(dir) {
+  const now = new Date();
+  try {
+    await fsp.utimes(dir, now, now);
+  } catch (_) {
+    throw new UserError('Sessão do editor expirou. Abra o PDF de novo.', 404);
+  }
+}
+
+app.post('/api/editor/open', uploadPdf.single('pdf'), async (req, res) => {
+  const files = uploadedFiles(req);
+  const id = newOutputId();
+  const dir = path.join(EDITOR_DIR, id);
+  try {
+    if (!req.file) throw new UserError('Nenhum arquivo enviado.');
+    await fsp.mkdir(dir, { recursive: true });
+    const input = await stage(req.file, dir, 'original.pdf');
+    let meta;
+    try {
+      const { stdout } = await withSlot(() => run('python3', [EDITOR_SCRIPT, 'open', input, dir], { timeout: 300000 }));
+      meta = parseStats(stdout);
+    } catch (err) {
+      if (err && err.code === 5) throw new UserError(String(err.stderr || '').trim().split('\n').pop());
+      throw scriptError(err, 'Falha ao abrir o PDF no editor. Ele pode estar corrompido.');
+    }
+    await fsp.unlink(input);
+    res.json({ session: id, originalName: req.file.originalname, ...meta });
+  } catch (err) {
+    removeWorkDir(dir);
+    const status = err instanceof UserError ? err.status : 500;
+    if (!(err instanceof UserError)) console.error('Erro em /api/editor/open:', err.message);
+    res.status(status).json({ error: err instanceof UserError ? err.message : 'Erro inesperado.' });
+  } finally {
+    cleanupUploads(files);
+  }
+});
+
+app.get('/api/editor/:id/page/:n', (req, res) => {
+  let dir;
+  try {
+    dir = sessionDir(req.params.id);
+  } catch (err) {
+    return res.status(404).end();
+  }
+  const n = Number(req.params.n);
+  if (!Number.isInteger(n) || n < 0 || n > 1000) return res.status(404).end();
+  res.set('Cache-Control', 'private, max-age=7200');
+  res.sendFile(path.join(dir, `page_${n}.jpg`), (err) => {
+    if (err && !res.headersSent) res.status(404).end();
+  });
+});
+
+app.post('/api/editor/:id/apply', express.json({ limit: '30mb' }), job(async (req, { jobDir }) => {
+  const dir = sessionDir(req.params.id);
+  await touchSession(dir);
+  const body = req.body || {};
+  if (!Array.isArray(body.ops)) throw new UserError('Alterações inválidas.');
+  const opsPath = path.join(jobDir, 'ops.json');
+  await fsp.writeFile(opsPath, JSON.stringify({ ops: body.ops, flattenForms: Boolean(body.flattenForms) }));
+  const output = path.join(jobDir, 'editado.pdf');
+
+  let stats;
+  try {
+    const { stdout } = await withSlot(() => run('python3', [EDITOR_SCRIPT, 'apply', path.join(dir, 'doc.pdf'), opsPath, output],
+      { timeout: 300000 }));
+    stats = parseStats(stdout);
+  } catch (err) {
+    if (err && err.code === 5) throw new UserError(String(err.stderr || '').trim().split('\n').pop());
+    throw scriptError(err, 'Falha ao salvar as edições.');
+  }
+  const base = path.basename(String(body.originalName || 'documento.pdf'), '.pdf').slice(0, 80) || 'documento';
+  const out = await publish(output, 'pdf');
+  return { ...out, originalName: `${base}_editado.pdf`, stats };
 }));
 
 // --- Download ------------------------------------------------------------------
