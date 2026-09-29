@@ -2,7 +2,11 @@ services:
   ihatepdf:
     build: .
     container_name: ihatepdf
-    cpus: "0.8"
+    # OCR, Xerox e LibreOffice são pesados; 0.8 CPU estourava o timeout do pdf2docx
+    cpus: "2"
+    mem_limit: 3g
+    environment:
+      - MAX_JOBS=2
     ports:
       - "666:666"
     restart: unless-stopped

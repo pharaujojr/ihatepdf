@@ -435,8 +435,9 @@ h2 {
 }
 
 .tabs {
-  display: flex;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
   margin-bottom: 28px;
   position: relative;
 }
@@ -451,10 +452,10 @@ h2 {
   background: #0d0d0d;
   color: #666;
   border: 1px solid #1f1f1f;
-  padding: 18px 12px 16px;
-  font-size: 0.95rem;
+  padding: 16px 6px 14px;
+  font-size: 0.8rem;
   font-weight: 900;
-  letter-spacing: 2px;
+  letter-spacing: 1px;
   border-radius: 14px;
   cursor: pointer;
   font-family: inherit;
@@ -596,6 +597,12 @@ h2 {
   color: #ff2a4d;
 }
 
+@media (max-width: 640px) {
+  .tabs {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
 @media (max-width: 560px) {
   .merge-list li {
     align-items: flex-start;
@@ -617,4 +624,67 @@ footer {
   padding: 20px;
   color: #555;
   font-size: 0.85rem;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 4px;
+  cursor: pointer;
+  color: #ccc;
+}
+
+.check-row input {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  accent-color: #ff2a4d;
+  cursor: pointer;
+}
+
+.target-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 4px 4px;
+  color: #ccc;
+}
+
+.target-row input {
+  width: 110px;
+  border: 1px solid #2a2a2a;
+  border-radius: 10px;
+  background: #0a0a0a;
+  color: #f0f0f0;
+  padding: 10px 12px;
+  font-size: 1rem;
+  font-family: inherit;
+  outline: none;
+}
+
+.target-row input:focus {
+  border-color: #ff2a4d;
+  box-shadow: 0 0 14px rgba(255, 42, 77, 0.2);
+}
+
+.hint {
+  color: #777;
+  font-size: 0.85rem;
+  margin-top: 8px;
+}
+
+.preview {
+  text-align: left;
+  background: #0a0a0a;
+  border: 1px solid #2a2a2a;
+  border-radius: 10px;
+  padding: 14px;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.85rem;
+  color: #bbb;
 }

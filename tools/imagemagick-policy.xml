@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Política do ImageMagick do I HATE PDF. Só os formatos que a aplicação usa
+  ficam liberados; coders perigosos (MVG, MSL, SVG, URL, TEXT, EPHEMERAL...)
+  são bloqueados — classe de falha "ImageTragick". Limites de recurso evitam
+  que uma imagem-bomba (dimensões gigantes) derrube o container.
+-->
+<policymap>
+  <policy domain="resource" name="memory" value="512MiB"/>
+  <policy domain="resource" name="map" value="1GiB"/>
+  <policy domain="resource" name="disk" value="4GiB"/>
+  <policy domain="resource" name="area" value="256MP"/>
+  <policy domain="resource" name="width" value="24KP"/>
+  <policy domain="resource" name="height" value="24KP"/>
+  <policy domain="resource" name="time" value="300"/>
+  <policy domain="delegate" rights="none" pattern="*"/>
+  <policy domain="path" rights="none" pattern="@*"/>
+  <policy domain="coder" rights="none" pattern="*"/>
+  <policy domain="coder" rights="read|write" pattern="{PNG,JPEG,JPG,WEBP,TIFF,TIF,BMP,GIF,HEIC,PGM,PBM,PNM,GROUP4,FAX}"/>
+  <policy domain="coder" rights="write" pattern="PDF"/>
+</policymap>

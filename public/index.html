@@ -79,6 +79,23 @@
         </svg>
         <span>IMAGENS</span>
       </button>
+      <button type="button" class="tab-btn" data-tab="text">
+        <svg class="tab-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+          <path d="M11 5 L29 5 L37 13 L37 43 L11 43 Z" fill="#1a0a0d" stroke="#ff2a4d" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M29 5 L29 13 L37 13" fill="none" stroke="#ff2a4d" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M16 20 H32 M16 26 H32 M16 32 H26" stroke="#ff2a4d" stroke-width="2" stroke-linecap="round"/>
+          <path d="M14 10 H22" stroke="#555" stroke-width="2" stroke-linecap="round" stroke-dasharray="2 3"/>
+        </svg>
+        <span>TEXTO</span>
+      </button>
+      <button type="button" class="tab-btn" data-tab="excel">
+        <svg class="tab-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+          <rect x="8" y="9" width="32" height="30" rx="3" fill="#1a0a0d" stroke="#ff2a4d" stroke-width="2"/>
+          <path d="M8 18 H40 M8 27 H40 M19 9 V39 M30 9 V39" stroke="#ff2a4d" stroke-width="1.6"/>
+          <path d="M8 9 H40 V18 H8 Z" fill="#8b0000" opacity="0.7"/>
+        </svg>
+        <span>EXCEL</span>
+      </button>
     </nav>
 
     <div id="tab-compress" class="tab-pane">
@@ -127,7 +144,25 @@
               <p>Esmaga o PDF até o talo. Qualidade? Detalhe.</p>
             </div>
           </label>
+          <label class="option">
+            <input type="radio" name="profile" value="xerox" />
+            <div class="option-card">
+              <h3>Modo Xerox de Repartição</h3>
+              <p>Preto e branco puro, estilo cópia de cartório. Perfeito pra documento escaneado. O texto vira imagem.</p>
+            </div>
+          </label>
         </div>
+
+        <label class="check-row">
+          <input type="checkbox" id="compressGray" />
+          <span>Tons de cinza (tira a cor e economiza mais)</span>
+        </label>
+        <div class="target-row">
+          <label for="compressTarget">Precisa caber em no máximo</label>
+          <input type="number" id="compressTarget" min="0.1" step="0.1" placeholder="ex.: 5" inputmode="decimal" />
+          <span>MB</span>
+        </div>
+        <p class="hint">Com o tamanho máximo preenchido, a gente vai apertando até caber e ignora o perfil escolhido.</p>
       </section>
 
       <section class="paper-size-panel">
@@ -142,7 +177,8 @@
             Tamanho do papel
           </label>
           <select id="compressPaperSize" class="paper-size-select">
-            <option value="a4" selected>A4 (210 x 297 mm)</option>
+            <option value="original" selected>Manter o original</option>
+            <option value="a4">A4 (210 x 297 mm)</option>
             <option value="letter">Letter (8.5 x 11 in)</option>
             <option value="legal">Legal (8.5 x 14 in)</option>
             <option value="a3">A3 (297 x 420 mm)</option>
@@ -204,6 +240,7 @@
           </label>
           <select id="mergePaperSize" class="paper-size-select">
             <option value="a4" selected>A4 (210 x 297 mm)</option>
+            <option value="original">Manter o tamanho de cada página</option>
             <option value="letter">Letter (8.5 x 11 in)</option>
             <option value="legal">Legal (8.5 x 14 in)</option>
             <option value="a3">A3 (297 x 420 mm)</option>
@@ -346,6 +383,86 @@
       </div>
     </div>
 
+    <div id="tab-text" class="tab-pane hidden">
+      <section id="textDropzone" class="dropzone">
+        <input type="file" id="textInput" accept="application/pdf,.pdf" hidden />
+        <div class="dz-inner">
+          <svg class="dz-icon" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+            <path d="M24 10 L60 10 L76 26 L76 90 L24 90 Z" fill="#1a0a0d" stroke="#ff2a4d" stroke-width="3" stroke-linejoin="round"/>
+            <path d="M60 10 L60 26 L76 26" fill="none" stroke="#ff2a4d" stroke-width="3" stroke-linejoin="round"/>
+            <path d="M34 44 H66 M34 56 H66 M34 68 H54" stroke="#ff2a4d" stroke-width="3" stroke-linecap="round"/>
+            <path d="M30 18 H48" stroke="#555" stroke-width="3" stroke-linecap="round" stroke-dasharray="3 5"/>
+          </svg>
+          <p class="dz-text">Arraste seu PDF aqui</p>
+          <p class="dz-sub">ou <button type="button" id="textBrowseBtn" class="link-btn">clique para escolher</button></p>
+          <p id="textFileName" class="file-name"></p>
+        </div>
+      </section>
+
+      <section class="compression-section">
+        <h2>Como você quer o texto?</h2>
+        <label class="check-row">
+          <input type="checkbox" id="textRemoveHeaders" checked />
+          <span>Arrancar cabeçalhos, rodapés e números de página</span>
+        </label>
+        <label class="check-row">
+          <input type="checkbox" id="textParagraphs" checked />
+          <span>Juntar as linhas em parágrafos (desfaz as quebras do PDF)</span>
+        </label>
+        <label class="check-row">
+          <input type="checkbox" id="textOcr" checked />
+          <span>Ler páginas escaneadas com OCR (mais lento)</span>
+        </label>
+      </section>
+
+      <div class="action-wrap">
+        <button id="textBtn" class="primary-btn btn-merge" disabled>
+          <span class="btn-label">ARRANCAR O TEXTO</span>
+          <span class="btn-sub" id="textPhrase">Só o miolo, sem a casca</span>
+        </button>
+      </div>
+    </div>
+
+    <div id="tab-excel" class="tab-pane hidden">
+      <section id="excelDropzone" class="dropzone">
+        <input type="file" id="excelInput" accept="application/pdf,.pdf" hidden />
+        <div class="dz-inner">
+          <svg class="dz-icon" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+            <rect x="14" y="18" width="72" height="64" rx="5" fill="#1a0a0d" stroke="#ff2a4d" stroke-width="3"/>
+            <path d="M14 36 H86 M14 54 H86 M14 72 H86 M38 18 V82 M62 18 V82" stroke="#ff2a4d" stroke-width="2.5"/>
+            <path d="M14 18 H86 V36 H14 Z" fill="#8b0000" opacity="0.7"/>
+          </svg>
+          <p class="dz-text">Arraste seu PDF com tabelas aqui</p>
+          <p class="dz-sub">ou <button type="button" id="excelBrowseBtn" class="link-btn">clique para escolher</button></p>
+          <p id="excelFileName" class="file-name"></p>
+        </div>
+      </section>
+
+      <section class="compression-section">
+        <h2>Como montar a planilha?</h2>
+        <label class="check-row">
+          <input type="checkbox" id="excelMerge" checked />
+          <span>Emendar tabelas que continuam na página seguinte</span>
+        </label>
+        <label class="check-row">
+          <input type="checkbox" id="excelNumbers" checked />
+          <span>Transformar valores (R$ 1.234,56), % e datas em números de verdade</span>
+        </label>
+        <label class="check-row">
+          <input type="checkbox" id="excelSingle" />
+          <span>Tudo numa aba só (em vez de uma aba por tabela)</span>
+        </label>
+        <p class="hint">Funciona com tabelas com grade e sem grade (extratos, relatórios). PDF escaneado não tem tabela legível.</p>
+      </section>
+
+      <div class="action-wrap">
+        <button id="excelBtn" class="primary-btn btn-compress" disabled>
+          <span class="btn-label">PLANILHAR ESSA BAGAÇA</span>
+          <span class="btn-sub" id="excelPhrase">Célula por célula, no ódio</span>
+        </button>
+      </div>
+    </div>
+
     <section id="loading" class="loading hidden">
       <div class="heart-loader" id="heartLoader" aria-label="Progresso do processamento">
         <img class="heart-progress-base" src="logo.svg" alt="" />
@@ -360,11 +477,12 @@
     <section id="result" class="result hidden">
       <h2>Pronto!</h2>
       <p id="resultInfo"></p>
+      <pre id="resultPreview" class="preview hidden"></pre>
       <a id="downloadBtn" class="primary-btn" href="#">BAIXAR PDF</a>
       <button id="resetBtn" class="link-btn">Fazer outro</button>
     </section>
 
-    <section id="errorBox" class="error hidden"></section>
+    <section id="errorBox" class="error hidden" role="alert"></section>
   </main>
 
   <footer>

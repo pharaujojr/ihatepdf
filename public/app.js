@@ -86,8 +86,36 @@ const LOADING_MESSAGES = {
     'Escolhendo a melhor moldura...',
     'Amassando os pixels no formato certo...',
     'Empacotando as imagens com carinho de ódio...'
+  ],
+  text: [
+    'Arrancando cabeçalho por cabeçalho...',
+    'Jogando os números de página no lixo...',
+    'Colando as linhas de volta em parágrafos...',
+    'Forçando o robô a ler o escaneado...',
+    'Separando o miolo da casca...'
+  ],
+  excel: [
+    'Caçando tabelas escondidas...',
+    'Desenhando a grade na régua...',
+    'Convertendo R$ em número de verdade...',
+    'Emendando a tabela que fugiu pra outra página...',
+    'Brigando com célula mesclada...'
   ]
 };
+
+const TEXT_PHRASES = [
+  'Só o miolo, sem a casca',
+  'Tchau, rodapé chato',
+  'Texto puro, sem firula',
+  'Ctrl+C sem sofrimento'
+];
+
+const EXCEL_PHRASES = [
+  'Célula por célula, no ódio',
+  'Tabela boa é tabela somável',
+  'Adeus, digitar na mão',
+  'PROCV que lute'
+];
 
 function rotatePhrase(el, list) {
   if (!el) return;
@@ -107,6 +135,74 @@ rotatePhrase(document.getElementById('compressPhrase'), COMPRESS_PHRASES);
 rotatePhrase(document.getElementById('mergePhrase'), MERGE_PHRASES);
 rotatePhrase(document.getElementById('wordPhrase'), WORD_PHRASES);
 rotatePhrase(document.getElementById('imagePhrase'), IMAGE_PHRASES);
+rotatePhrase(document.getElementById('textPhrase'), TEXT_PHRASES);
+rotatePhrase(document.getElementById('excelPhrase'), EXCEL_PHRASES);
+
+const resultPreview = document.getElementById('resultPreview');
+
+// Escapa texto vindo do usuário/servidor antes de ir para innerHTML
+function esc(value) {
+  return String(value).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+// POST de formulário tolerante a respostas não-JSON (ex.: 413 do proxy)
+async function postForm(url, formData) {
+  const res = await fetch(url, { method: 'POST', body: formData });
+  let data = null;
+  try {
+    data = await res.json();
+  } catch (_) {
+    data = null;
+  }
+  if (!res.ok || !data) {
+    if (res.status === 413) throw new Error('Arquivo grande demais para o servidor.');
+    throw new Error((data && data.error) || `Erro no servidor (${res.status}).`);
+  }
+  return data;
+}
+
+async function showResult({ info, label, id, outName, preview }) {
+  resultInfo.innerHTML = info;
+  downloadBtn.textContent = label;
+  downloadBtn.href = `/api/download/${id}?name=${encodeURIComponent(outName)}`;
+  downloadBtn.setAttribute('download', outName);
+  resultPreview.textContent = preview || '';
+  resultPreview.classList.toggle('hidden', !preview);
+  stopLoading(true);
+  await wait(350);
+  resultEl.classList.remove('hidden');
+}
+
+// Item de lista arrastável (merge e imagens). Monta via DOM com textContent:
+// nome de arquivo nunca vira HTML.
+function buildListItem(file, i) {
+  const li = document.createElement('li');
+  li.draggable = true;
+  li.dataset.index = i;
+  const parts = [
+    ['span', 'drag-handle', ''],
+    ['span', 'idx', `${i + 1}.`],
+    ['span', 'name', file.name],
+    ['span', 'size', formatBytes(file.size)]
+  ];
+  parts.forEach(([tag, cls, text]) => {
+    const el = document.createElement(tag);
+    el.className = cls;
+    el.textContent = text;
+    if (cls === 'drag-handle') el.setAttribute('aria-hidden', 'true');
+    li.appendChild(el);
+  });
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'remove-btn';
+  remove.dataset.action = 'remove';
+  remove.setAttribute('aria-label', `Remover ${file.name}`);
+  remove.textContent = '✕';
+  li.appendChild(remove);
+  return li;
+}
 
 function formatBytes(b) {
   if (b < 1024) return b + ' B';
@@ -165,7 +261,7 @@ function stopLoading(done = false) {
 }
 
 // --- Tabs ---
-const TAB_IDS = ['compress', 'merge', 'word', 'image'];
+const TAB_IDS = ['compress', 'merge', 'word', 'image', 'text', 'excel'];
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -225,35 +321,43 @@ compressBtn.addEventListener('click', async () => {
 
   const profile = document.querySelector('input[name="profile"]:checked').value;
   const originalSize = selectedFile.size;
+  const target = document.getElementById('compressTarget').value.trim();
 
   const formData = new FormData();
   formData.append('pdf', selectedFile);
   formData.append('profile', profile);
-  formData.append('paperSize', compressPaperSize?.value || 'a4');
+  formData.append('paperSize', compressPaperSize?.value || 'original');
+  formData.append('grayscale', document.getElementById('compressGray').checked ? '1' : '0');
+  if (target) formData.append('targetMB', target);
 
   startLoading('compress');
   resultEl.classList.add('hidden');
   compressBtn.disabled = true;
 
   try {
-    const res = await fetch('/api/compress', { method: 'POST', body: formData });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao comprimir.');
+    const data = await postForm('/api/compress', formData);
 
-    const reduction = ((1 - data.size / originalSize) * 100).toFixed(1);
+    const reduction = Math.max(0, (1 - data.size / originalSize) * 100).toFixed(1);
     const outName = data.originalName.replace(/\.pdf$/i, '') + '_comprimido.pdf';
+    let extra = '';
+    if (data.alreadyOptimal) {
+      extra = '<br><em>Esse PDF já estava no osso: devolvemos o original, só com uma faxina sem perdas.</em>';
+    } else if (data.targetMet === false) {
+      extra = `<br><em>Não coube no tamanho pedido nem no talo. Esse é o menor que deu (${esc(data.usedLevel)}).</em>`;
+    } else if (data.targetMet) {
+      extra = `<br><em>Coube! Usamos o ${esc(data.usedLevel)}.</em>`;
+    }
 
-    resultInfo.innerHTML = `
-      Original: <strong>${formatBytes(originalSize)}</strong><br>
-      Comprimido: <strong>${formatBytes(data.size)}</strong><br>
-      Redução: <strong style="color:#ff2a4d">${reduction}%</strong>
-    `;
-    downloadBtn.textContent = 'BAIXAR PDF COMPRIMIDO';
-    downloadBtn.href = `/api/download/${data.id}?name=${encodeURIComponent(outName)}`;
-    downloadBtn.setAttribute('download', outName);
-    stopLoading(true);
-    await wait(350);
-    resultEl.classList.remove('hidden');
+    await showResult({
+      info: `
+        Original: <strong>${formatBytes(originalSize)}</strong><br>
+        Comprimido: <strong>${formatBytes(data.size)}</strong><br>
+        Redução: <strong style="color:#ff2a4d">${reduction}%</strong>${extra}
+      `,
+      label: 'BAIXAR PDF COMPRIMIDO',
+      id: data.id,
+      outName
+    });
   } catch (err) {
     stopLoading(false);
     showError(err.message);
@@ -268,13 +372,14 @@ resetBtn.addEventListener('click', () => {
   fileInput.value = '';
   fileNameEl.textContent = '';
   compressBtn.disabled = true;
-  if (compressPaperSize) compressPaperSize.value = 'a4';
+  if (compressPaperSize) compressPaperSize.value = 'original';
   if (mergePaperSize) mergePaperSize.value = 'a4';
   mergeFiles = [];
   mergeInput.value = '';
   renderMergeList();
   resetWord();
   resetImage();
+  singlePdfTools.forEach((t) => t.reset());
   resultEl.classList.add('hidden');
 });
 
@@ -282,16 +387,7 @@ resetBtn.addEventListener('click', () => {
 function renderMergeList() {
   mergeList.innerHTML = '';
   mergeFiles.forEach((file, i) => {
-    const li = document.createElement('li');
-    li.draggable = true;
-    li.dataset.index = i;
-    li.innerHTML = `
-      <span class="drag-handle" aria-hidden="true"></span>
-      <span class="idx">${i + 1}.</span>
-      <span class="name">${file.name}</span>
-      <span class="size">${formatBytes(file.size)}</span>
-      <button type="button" class="remove-btn" data-action="remove">✕</button>
-    `;
+    const li = buildListItem(file, i);
 
     li.addEventListener('dragstart', (e) => {
       draggedMergeIndex = i;
@@ -389,21 +485,18 @@ mergeBtn.addEventListener('click', async () => {
   mergeBtn.disabled = true;
 
   try {
-    const res = await fetch('/api/merge', { method: 'POST', body: formData });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao juntar.');
+    const data = await postForm('/api/merge', formData);
 
     const outName = 'juntado.pdf';
-    resultInfo.innerHTML = `
-      Arquivos juntados: <strong>${mergeFiles.length}</strong><br>
-      Tamanho final: <strong>${formatBytes(data.size)}</strong>
-    `;
-    downloadBtn.textContent = 'BAIXAR PDF JUNTADO';
-    downloadBtn.href = `/api/download/${data.id}?name=${encodeURIComponent(outName)}`;
-    downloadBtn.setAttribute('download', outName);
-    stopLoading(true);
-    await wait(350);
-    resultEl.classList.remove('hidden');
+    await showResult({
+      info: `
+        Arquivos juntados: <strong>${mergeFiles.length}</strong><br>
+        Tamanho final: <strong>${formatBytes(data.size)}</strong>
+      `,
+      label: 'BAIXAR PDF JUNTADO',
+      id: data.id,
+      outName
+    });
   } catch (err) {
     stopLoading(false);
     showError(err.message);
@@ -488,23 +581,15 @@ wordBtn.addEventListener('click', async () => {
   wordBtn.disabled = true;
 
   try {
-    const res = await fetch('/api/word', { method: 'POST', body: formData });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro na conversão.');
+    const data = await postForm('/api/word', formData);
 
     const base = wordFile.name.replace(/\.[^.]+$/, '');
     const outName = `${base}.${data.ext}`;
     const label = dir === 'pdf2word' ? 'BAIXAR WORD' : 'BAIXAR PDF';
-    resultInfo.innerHTML = `
+    await showResult({ info: `
       Convertido para <strong>.${data.ext}</strong><br>
       Tamanho final: <strong>${formatBytes(data.size)}</strong>
-    `;
-    downloadBtn.textContent = label;
-    downloadBtn.href = `/api/download/${data.id}?name=${encodeURIComponent(outName)}`;
-    downloadBtn.setAttribute('download', outName);
-    stopLoading(true);
-    await wait(350);
-    resultEl.classList.remove('hidden');
+    `, label, id: data.id, outName });
   } catch (err) {
     stopLoading(false);
     showError(err.message);
@@ -571,16 +656,7 @@ function resetImage() {
 function renderImageList() {
   imageListEl.innerHTML = '';
   imageFiles.forEach((file, i) => {
-    const li = document.createElement('li');
-    li.draggable = true;
-    li.dataset.index = i;
-    li.innerHTML = `
-      <span class="drag-handle" aria-hidden="true"></span>
-      <span class="idx">${i + 1}.</span>
-      <span class="name">${file.name}</span>
-      <span class="size">${formatBytes(file.size)}</span>
-      <button type="button" class="remove-btn" data-action="remove">✕</button>
-    `;
+    const li = buildListItem(file, i);
 
     li.addEventListener('dragstart', (e) => {
       draggedImageIndex = i;
@@ -669,9 +745,7 @@ imageBtn.addEventListener('click', async () => {
   imageBtn.disabled = true;
 
   try {
-    const res = await fetch('/api/image', { method: 'POST', body: formData });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro na conversão.');
+    const data = await postForm('/api/image', formData);
 
     let outName, info, label;
     if (dir === 'img2pdf') {
@@ -686,13 +760,7 @@ imageBtn.addEventListener('click', async () => {
       label = data.ext === 'zip' ? 'BAIXAR ZIP' : 'BAIXAR IMAGEM';
     }
 
-    resultInfo.innerHTML = info;
-    downloadBtn.textContent = label;
-    downloadBtn.href = `/api/download/${data.id}?name=${encodeURIComponent(outName)}`;
-    downloadBtn.setAttribute('download', outName);
-    stopLoading(true);
-    await wait(350);
-    resultEl.classList.remove('hidden');
+    await showResult({ info: info, label, id: data.id, outName });
   } catch (err) {
     stopLoading(false);
     showError(err.message);
@@ -703,3 +771,111 @@ imageBtn.addEventListener('click', async () => {
 });
 
 updateImageUI();
+
+// --- Ferramentas de um PDF só (Texto, Excel) ---
+function setupSinglePdfTool({ prefix, endpoint, loadingKind, buildForm, describe }) {
+  const dropzoneEl = document.getElementById(`${prefix}Dropzone`);
+  const inputEl = document.getElementById(`${prefix}Input`);
+  const browseEl = document.getElementById(`${prefix}BrowseBtn`);
+  const nameEl = document.getElementById(`${prefix}FileName`);
+  const buttonEl = document.getElementById(`${prefix}Btn`);
+  let file = null;
+
+  const setToolFile = (f) => {
+    if (!f) return;
+    if (!f.name.toLowerCase().endsWith('.pdf')) {
+      showError('Arquivo precisa ser PDF.');
+      return;
+    }
+    file = f;
+    nameEl.textContent = `${f.name} (${formatBytes(f.size)})`;
+    buttonEl.disabled = false;
+  };
+
+  const reset = () => {
+    file = null;
+    inputEl.value = '';
+    nameEl.textContent = '';
+    buttonEl.disabled = true;
+  };
+
+  browseEl.addEventListener('click', (e) => { e.stopPropagation(); inputEl.click(); });
+  dropzoneEl.addEventListener('click', () => inputEl.click());
+  inputEl.addEventListener('change', (e) => { if (e.target.files[0]) setToolFile(e.target.files[0]); });
+  ['dragenter', 'dragover'].forEach(ev => dropzoneEl.addEventListener(ev, (e) => { e.preventDefault(); dropzoneEl.classList.add('dragover'); }));
+  ['dragleave', 'drop'].forEach(ev => dropzoneEl.addEventListener(ev, (e) => { e.preventDefault(); dropzoneEl.classList.remove('dragover'); }));
+  dropzoneEl.addEventListener('drop', (e) => { const f = e.dataTransfer.files[0]; if (f) setToolFile(f); });
+
+  buttonEl.addEventListener('click', async () => {
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('pdf', file);
+    buildForm(formData);
+
+    startLoading(loadingKind);
+    resultEl.classList.add('hidden');
+    buttonEl.disabled = true;
+    try {
+      const data = await postForm(endpoint, formData);
+      await showResult(describe(data, file));
+    } catch (err) {
+      stopLoading(false);
+      showError(err.message);
+    } finally {
+      loadingEl.classList.add('hidden');
+      buttonEl.disabled = !file;
+    }
+  });
+
+  return { reset };
+}
+
+const checked = (id) => (document.getElementById(id).checked ? '1' : '0');
+const baseName = (f) => f.name.replace(/\.pdf$/i, '');
+
+const singlePdfTools = [
+  setupSinglePdfTool({
+    prefix: 'text',
+    endpoint: '/api/text',
+    loadingKind: 'text',
+    buildForm: (fd) => {
+      fd.append('removeHeaders', checked('textRemoveHeaders'));
+      fd.append('keepLines', document.getElementById('textParagraphs').checked ? '0' : '1');
+      fd.append('ocr', checked('textOcr'));
+    },
+    describe: (data, file) => {
+      const s = data.stats || {};
+      const ocr = s.ocr_pages ? `<br>Páginas lidas por OCR: <strong>${s.ocr_pages}</strong>` : '';
+      const removed = s.removed_lines ? `<br>Linhas de cabeçalho/rodapé arrancadas: <strong>${s.removed_lines}</strong>` : '';
+      return {
+        info: `Páginas: <strong>${s.pages ?? '?'}</strong> · Caracteres: <strong>${(s.chars ?? 0).toLocaleString('pt-BR')}</strong>${removed}${ocr}`,
+        label: 'BAIXAR TXT',
+        id: data.id,
+        outName: `${baseName(file)}.txt`,
+        preview: data.preview
+      };
+    }
+  }),
+  setupSinglePdfTool({
+    prefix: 'excel',
+    endpoint: '/api/excel',
+    loadingKind: 'excel',
+    buildForm: (fd) => {
+      fd.append('mergePages', checked('excelMerge'));
+      fd.append('convertNumbers', checked('excelNumbers'));
+      fd.append('singleSheet', checked('excelSingle'));
+    },
+    describe: (data, file) => {
+      const s = data.stats || {};
+      const what = s.fallback
+        ? 'Nenhuma tabela de verdade encontrada: mandamos o texto do PDF dividido em colunas.'
+        : `Tabelas encontradas: <strong>${s.tables}</strong> · Linhas: <strong>${s.rows}</strong>`;
+      return {
+        info: `${what}<br>Tamanho: <strong>${formatBytes(data.size)}</strong>`,
+        label: 'BAIXAR EXCEL',
+        id: data.id,
+        outName: `${baseName(file)}.xlsx`
+      };
+    }
+  })
+];

@@ -3,13 +3,20 @@ const multer = require('multer');
 const { execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const fsp = require('fs/promises');
 const crypto = require('crypto');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 666;
-const FILE_RETENTION_MS = 5 * 60 * 1000;
-const DEFAULT_PAPER_SIZE = 'a4';
+const FILE_RETENTION_MS = 10 * 60 * 1000;
+const STALE_WORK_MS = 30 * 60 * 1000;
+// Processos pesados simultâneos (gs, LibreOffice, OCR...). O resto espera na fila.
+const MAX_JOBS = Number(process.env.MAX_JOBS) || 2;
+const MAX_QUEUE = Number(process.env.MAX_QUEUE) || 20;
+const MAX_RASTER_PAGES = 300;
+
 const ALLOWED_PAPER_SIZES = new Set([
+  'original',
   'a3',
   'a4',
   'a5',
@@ -25,8 +32,13 @@ const OUTPUT_PREFIX = 'comprimido_';
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 const OUTPUT_DIR = path.join(__dirname, 'outputs');
 const WORK_DIR = path.join(__dirname, 'work');
-const LANG_SCRIPT  = path.join(__dirname, 'tools', 'fix_docx_lang.py');
-const MERGE_SCRIPT = path.join(__dirname, 'tools', 'merge_pdf.py');
+const TOOLS = path.join(__dirname, 'tools');
+const LANG_SCRIPT = path.join(TOOLS, 'fix_docx_lang.py');
+const MERGE_SCRIPT = path.join(TOOLS, 'merge_pdf.py');
+const OPTIMIZE_SCRIPT = path.join(TOOLS, 'optimize_pdf.py');
+const TEXT_SCRIPT = path.join(TOOLS, 'pdf_to_text.py');
+const EXCEL_SCRIPT = path.join(TOOLS, 'pdf_to_excel.py');
+const LO_HARDENING = path.join(TOOLS, 'lo-registrymodifications.xcu');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 fs.mkdirSync(WORK_DIR, { recursive: true });
@@ -35,526 +47,690 @@ const PDF_EXT = ['.pdf'];
 const WORD_EXT = ['.doc', '.docx', '.odt', '.rtf', '.txt'];
 const IMAGE_EXT = ['.png', '.jpg', '.jpeg', '.webp', '.tiff', '.tif', '.bmp', '.gif', '.heic'];
 const IMAGE_OUT_FORMATS = new Set(['png', 'jpg', 'webp', 'tiff', 'bmp']);
+// Coder explícito para o ImageMagick: ele não "adivinha" o formato pelo
+// conteúdo (evita que um .png com conteúdo SVG/MVG/MSL seja interpretado).
+const IMAGE_CODER = {
+  '.png': 'png',
+  '.jpg': 'jpeg',
+  '.jpeg': 'jpeg',
+  '.webp': 'webp',
+  '.tiff': 'tiff',
+  '.tif': 'tiff',
+  '.bmp': 'bmp',
+  '.gif': 'gif',
+  '.heic': 'heic'
+};
 
-function makeUploader(allowedExt) {
+// --- Erros e execução de processos -----------------------------------------
+
+class UserError extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
+
+function run(cmd, args, { timeout = 120000 } = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, { timeout, maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err) {
+        err.stderr = stderr;
+        return reject(err);
+      }
+      resolve({ stdout, stderr });
+    });
+  });
+}
+
+// Fila simples: no máximo MAX_JOBS processos pesados ao mesmo tempo
+let runningJobs = 0;
+const jobQueue = [];
+
+function withSlot(fn) {
+  if (runningJobs >= MAX_JOBS && jobQueue.length >= MAX_QUEUE) {
+    return Promise.reject(new UserError('Servidor lotado de ódio agora. Tente de novo em instantes.', 503));
+  }
+  return new Promise((resolve, reject) => {
+    const start = () => {
+      runningJobs += 1;
+      Promise.resolve()
+        .then(fn)
+        .then(resolve, reject)
+        .finally(() => {
+          runningJobs -= 1;
+          const next = jobQueue.shift();
+          if (next) next();
+        });
+    };
+    if (runningJobs < MAX_JOBS) start();
+    else jobQueue.push(start);
+  });
+}
+
+// Última linha do stdout dos scripts Python é um JSON de estatísticas
+function parseStats(stdout) {
+  const last = String(stdout || '').trim().split('\n').pop();
+  try {
+    return JSON.parse(last);
+  } catch (_) {
+    return {};
+  }
+}
+
+// Scripts Python: código 3 = PDF com senha, 4 = PDF sem texto
+function scriptError(err, fallback) {
+  if (err instanceof UserError) return err;
+  console.error(`${fallback} ->`, err && err.message, err && err.stderr ? String(err.stderr).slice(-2000) : '');
+  if (err && err.code === 3) return new UserError('PDF protegido por senha. Tire a senha antes e tente de novo.');
+  if (err && err.code === 4) return new UserError('Não achei texto nenhum nesse PDF (é digitalizado?).');
+  if (err && err.killed) return new UserError('Demorou demais e o processo foi abortado. Tente um arquivo menor.', 504);
+  return new UserError(fallback, 500);
+}
+
+// --- Uploads, arquivos de trabalho e saídas --------------------------------
+
+function makeUploader(allowedExt, maxFiles) {
   const allowed = new Set(allowedExt);
   return multer({
     dest: UPLOAD_DIR,
-    limits: { fileSize: 200 * 1024 * 1024 },
+    limits: { fileSize: 200 * 1024 * 1024, files: maxFiles, fields: 20 },
     fileFilter: (_req, file, cb) => {
       const ext = path.extname(file.originalname).toLowerCase();
       if (allowed.has(ext)) {
         cb(null, true);
       } else {
-        cb(new Error(`Tipo de arquivo não aceito: ${ext || 'desconhecido'}.`));
+        cb(new UserError(`Tipo de arquivo não aceito: ${ext || 'desconhecido'}.`));
       }
     }
   });
 }
 
-const uploadPdf = makeUploader(PDF_EXT);
-const uploadWord = makeUploader([...PDF_EXT, ...WORD_EXT]);
-const uploadImage = makeUploader([...PDF_EXT, ...IMAGE_EXT]);
+const uploadPdf = makeUploader(PDF_EXT, 1);
+const uploadPdfs = makeUploader(PDF_EXT, 50);
+const uploadWord = makeUploader([...PDF_EXT, ...WORD_EXT], 1);
+const uploadImage = makeUploader([...PDF_EXT, ...IMAGE_EXT], 50);
 
-app.use(express.static(path.join(__dirname, 'public')));
-
-function normalizePaperSize(rawValue) {
-  if (!rawValue) return DEFAULT_PAPER_SIZE;
-  const value = String(rawValue).trim().toLowerCase();
-  if (!ALLOWED_PAPER_SIZES.has(value)) return null;
-  return value;
+function uploadedFiles(req) {
+  return [req.file, ...(req.files || [])].filter(Boolean);
 }
 
-function buildPaperArgs(paperSize) {
-  return [
-    `-sPAPERSIZE=${paperSize}`,
-    '-dFIXEDMEDIA',
-    '-dPDFFitPage'
-  ];
+function cleanupUploads(files) {
+  files.forEach((f) => f && f.path && fs.unlink(f.path, () => {}));
+}
+
+function removeWorkDir(dir) {
+  if (dir) fs.rm(dir, { recursive: true, force: true }, () => {});
 }
 
 function newOutputId() {
   return crypto.randomBytes(16).toString('hex');
 }
 
-function outputPathFor(id, ext) {
-  return path.join(OUTPUT_DIR, `${OUTPUT_PREFIX}${id}.${ext}`);
+// Move o arquivo final para outputs/ e agenda a remoção
+async function publish(filePath, ext) {
+  const id = newOutputId();
+  const outputPath = path.join(OUTPUT_DIR, `${OUTPUT_PREFIX}${id}.${ext}`);
+  await fsp.rename(filePath, outputPath);
+  const { size } = await fsp.stat(outputPath);
+  setTimeout(() => fs.unlink(outputPath, () => {}), FILE_RETENTION_MS).unref();
+  return { id, ext, size };
 }
 
-function scheduleOutputCleanup(filePath) {
-  setTimeout(() => {
-    fs.unlink(filePath, () => {});
-  }, FILE_RETENTION_MS).unref();
-}
-
-function cleanupExpiredOutputs() {
-  fs.readdir(OUTPUT_DIR, (dirErr, files) => {
+// Remove arquivos esquecidos (processo reiniciado no meio de um job, upload
+// abortado etc.) — sem isso uploads/ e work/ crescem para sempre.
+function sweepDir(dir, maxAgeMs, filter = () => true) {
+  fs.readdir(dir, (dirErr, names) => {
     if (dirErr) return;
-
     const now = Date.now();
-    files
-      .filter((name) => name.startsWith(OUTPUT_PREFIX))
-      .forEach((name) => {
-        const fullPath = path.join(OUTPUT_DIR, name);
-        fs.stat(fullPath, (statErr, stats) => {
-          if (statErr) return;
-          if (now - stats.mtimeMs > FILE_RETENTION_MS) {
-            fs.unlink(fullPath, () => {});
-          }
-        });
-      });
-  });
-}
-
-cleanupExpiredOutputs();
-setInterval(cleanupExpiredOutputs, 60 * 1000).unref();
-
-// Remove arquivos enviados (caminhos temporários do multer)
-function cleanupUploads(files) {
-  files.forEach((f) => f && f.path && fs.unlink(f.path, () => {}));
-}
-
-// Remove um diretório de trabalho recursivamente
-function removeWorkDir(dir) {
-  fs.rm(dir, { recursive: true, force: true }, () => {});
-}
-
-const GS_PROFILES = {
-  cadinho: (input, output, paperSize) => ([
-    '-sDEVICE=pdfwrite',
-    '-dCompatibilityLevel=1.4',
-    '-dPDFSETTINGS=/ebook',
-    '-dAutoRotatePages=/None',
-    ...buildPaperArgs(paperSize),
-    '-dNOPAUSE',
-    '-dQUIET',
-    '-dBATCH',
-    `-sOutputFile=${output}`,
-    input
-  ]),
-  marromeno: (input, output, paperSize) => ([
-    '-sDEVICE=pdfwrite',
-    '-dCompatibilityLevel=1.4',
-    '-dPDFSETTINGS=/screen',
-    '-dAutoRotatePages=/None',
-    ...buildPaperArgs(paperSize),
-    '-dNOPAUSE',
-    '-dQUIET',
-    '-dBATCH',
-    `-sOutputFile=${output}`,
-    input
-  ]),
-  braba: (input, output, paperSize) => ([
-    '-sDEVICE=pdfwrite',
-    '-dCompatibilityLevel=1.4',
-    '-dAutoRotatePages=/None',
-    ...buildPaperArgs(paperSize),
-    '-dNOPAUSE',
-    '-dQUIET',
-    '-dBATCH',
-    '-dPDFSETTINGS=/screen',
-    '-dColorImageResolution=40',
-    '-dGrayImageResolution=40',
-    '-dDownsampleColorImages=true',
-    '-dDownsampleGrayImages=true',
-    '-dColorImageDownsampleType=/Average',
-    '-dGrayImageDownsampleType=/Average',
-    '-dAutoFilterColorImages=false',
-    '-dColorImageFilter=/DCTEncode',
-    '-dAutoFilterGrayImages=false',
-    '-dGrayImageFilter=/DCTEncode',
-    `-sOutputFile=${output}`,
-    input
-  ])
-};
-
-app.post('/api/compress', uploadPdf.single('pdf'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
-  }
-
-  const profile = req.body.profile;
-  if (!GS_PROFILES[profile]) {
-    fs.unlink(req.file.path, () => {});
-    return res.status(400).json({ error: 'Perfil de compressão inválido.' });
-  }
-  const paperSize = normalizePaperSize(req.body.paperSize);
-  if (!paperSize) {
-    fs.unlink(req.file.path, () => {});
-    return res.status(400).json({ error: 'Tamanho de papel inválido.' });
-  }
-
-  const inputPath = req.file.path;
-  const outputId = newOutputId();
-  const outputPath = outputPathFor(outputId, 'pdf');
-
-  const args = GS_PROFILES[profile](inputPath, outputPath, paperSize);
-
-  execFile('gs', args, (err) => {
-    fs.unlink(inputPath, () => {});
-
-    if (err) {
-      console.error('Erro no Ghostscript:', err);
-      return res.status(500).json({ error: 'Falha ao comprimir o PDF.' });
-    }
-
-    fs.stat(outputPath, (statErr, stats) => {
-      if (statErr) {
-        return res.status(500).json({ error: 'Arquivo de saída não encontrado.' });
-      }
-      scheduleOutputCleanup(outputPath);
-      res.json({
-        id: outputId,
-        ext: 'pdf',
-        size: stats.size,
-        originalName: req.file.originalname,
-        paperSize
+    names.filter(filter).forEach((name) => {
+      const fullPath = path.join(dir, name);
+      fs.stat(fullPath, (statErr, stats) => {
+        if (!statErr && now - stats.mtimeMs > maxAgeMs) {
+          fs.rm(fullPath, { recursive: true, force: true }, () => {});
+        }
       });
     });
   });
+}
+
+function sweepAll() {
+  sweepDir(OUTPUT_DIR, FILE_RETENTION_MS, (name) => name.startsWith(OUTPUT_PREFIX));
+  sweepDir(UPLOAD_DIR, STALE_WORK_MS);
+  sweepDir(WORK_DIR, STALE_WORK_MS);
+}
+
+sweepAll();
+setInterval(sweepAll, 60 * 1000).unref();
+
+// Envolve um handler: cria pasta de trabalho, trata erros e sempre limpa tudo
+function job(handler) {
+  return async (req, res) => {
+    const files = uploadedFiles(req);
+    const jobDir = path.join(WORK_DIR, newOutputId());
+    try {
+      await fsp.mkdir(jobDir, { recursive: true });
+      const result = await handler(req, { jobDir, files });
+      res.json(result);
+    } catch (err) {
+      const status = err instanceof UserError ? err.status : 500;
+      if (!(err instanceof UserError)) console.error(`Erro em ${req.path}:`, err.message, err.stderr ? String(err.stderr).slice(-2000) : '');
+      res.status(status).json({ error: err instanceof UserError ? err.message : 'Erro inesperado.' });
+    } finally {
+      cleanupUploads(files);
+      removeWorkDir(jobDir);
+    }
+  };
+}
+
+// Copia o upload para a pasta de trabalho com a extensão certa (os
+// conversores detectam o formato pela extensão)
+async function stage(file, jobDir, name) {
+  const dest = path.join(jobDir, name);
+  await fsp.copyFile(file.path, dest);
+  return dest;
+}
+
+function flag(value) {
+  return value === '1' || value === 'true' || value === 'on';
+}
+
+function normalizePaperSize(rawValue, fallback) {
+  if (!rawValue) return fallback;
+  const value = String(rawValue).trim().toLowerCase();
+  if (!ALLOWED_PAPER_SIZES.has(value)) throw new UserError('Tamanho de papel inválido.');
+  return value;
+}
+
+function parseOrder(raw, length) {
+  const identity = Array.from({ length }, (_, i) => i);
+  if (!raw) return identity;
+  try {
+    const parsed = JSON.parse(raw).map(Number);
+    const valid = parsed.length === length &&
+      new Set(parsed).size === length &&
+      parsed.every((i) => Number.isInteger(i) && i >= 0 && i < length);
+    return valid ? parsed : identity;
+  } catch (_) {
+    return identity;
+  }
+}
+
+async function pageCount(pdfPath) {
+  try {
+    const { stdout } = await run('pdfinfo', [pdfPath], { timeout: 30000 });
+    const m = stdout.match(/^Pages:\s+(\d+)/m);
+    return m ? Number(m[1]) : 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
+// --- Segurança HTTP --------------------------------------------------------
+
+app.disable('x-powered-by');
+app.use((_req, res, next) => {
+  res.set({
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'no-referrer',
+    'Content-Security-Policy': "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+  });
+  next();
 });
 
-app.post('/api/merge', uploadPdf.array('pdfs', 50), (req, res) => {
-  const files = req.files || [];
-  if (files.length < 2) {
-    cleanupUploads(files);
-    return res.status(400).json({ error: 'Envie pelo menos 2 PDFs para juntar.' });
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true, running: runningJobs, queued: jobQueue.length });
+});
+
+// --- Compressão --------------------------------------------------------------
+// Níveis de compressão via Ghostscript (pdfwrite). Diferente do -dPDFSETTINGS
+// puro, aqui os JPEGs originais são SEMPRE recodificados (PassThrough=false) e
+// o limiar de downsample é 1.0: PDFs escaneados a ~140-200 dpi, que antes
+// passavam intactos pelo /ebook, agora encolhem de verdade.
+const LEVELS = {
+  cadinho: { dpi: 150, monoDpi: 300, q: 0.76 },
+  marromeno: { dpi: 72, monoDpi: 200, q: 0.76 },
+  braba: { dpi: 40, monoDpi: 150, q: 2.0 }
+};
+// Escada usada no modo "tamanho máximo": do mais leve ao mais bruto
+const TARGET_LADDER = [
+  { dpi: 150, monoDpi: 300, q: 0.76 },
+  { dpi: 110, monoDpi: 250, q: 0.76 },
+  { dpi: 72, monoDpi: 200, q: 0.76 },
+  { dpi: 60, monoDpi: 200, q: 1.2 },
+  { dpi: 45, monoDpi: 150, q: 1.5 },
+  { dpi: 40, monoDpi: 150, q: 2.0 },
+  { dpi: 40, monoDpi: 150, q: 2.0, gray: true },
+  { xerox: true }
+];
+
+function paperArgs(paperSize) {
+  if (paperSize === 'original') return [];
+  return [`-sPAPERSIZE=${paperSize}`, '-dFIXEDMEDIA', '-dPDFFitPage'];
+}
+
+function gsCompressArgs(input, output, { dpi, monoDpi, q, gray }, paperSize) {
+  const dict = `<< /QFactor ${q} /Blend 1 /HSamples [2 1 1 2] /VSamples [2 1 1 2] >>`;
+  return [
+    '-sDEVICE=pdfwrite',
+    '-dCompatibilityLevel=1.7',
+    '-dSAFER',
+    '-dNOPAUSE',
+    '-dQUIET',
+    '-dBATCH',
+    '-dAutoRotatePages=/None',
+    '-dDetectDuplicateImages=true',
+    '-dCompressFonts=true',
+    '-dSubsetFonts=true',
+    '-dEmbedAllFonts=true',
+    '-dDownsampleColorImages=true',
+    '-dDownsampleGrayImages=true',
+    '-dDownsampleMonoImages=true',
+    `-dColorImageResolution=${dpi}`,
+    `-dGrayImageResolution=${dpi}`,
+    `-dMonoImageResolution=${monoDpi}`,
+    '-dColorImageDownsampleThreshold=1.0',
+    '-dGrayImageDownsampleThreshold=1.0',
+    '-dMonoImageDownsampleThreshold=1.0',
+    '-dColorImageDownsampleType=/Bicubic',
+    '-dGrayImageDownsampleType=/Bicubic',
+    '-dMonoImageDownsampleType=/Subsample',
+    '-dAutoFilterColorImages=false',
+    '-dAutoFilterGrayImages=false',
+    '-dColorImageFilter=/DCTEncode',
+    '-dGrayImageFilter=/DCTEncode',
+    '-dPassThroughJPEGImages=false',
+    '-dPassThroughJPXImages=false',
+    // CMYK -> RGB (como o /ebook e o /screen fazem): 3 canais em vez de 4.
+    // Em catálogo de gráfica isso sozinho corta ~40%.
+    ...(gray
+      ? ['-sColorConversionStrategy=Gray', '-dProcessColorModel=/DeviceGray']
+      : ['-sColorConversionStrategy=RGB', '-dProcessColorModel=/DeviceRGB']),
+    ...paperArgs(paperSize),
+    `-sOutputFile=${output}`,
+    '-c', `<< /ColorImageDict ${dict} /GrayImageDict ${dict} >> setdistillerparams`,
+    '-f', input
+  ];
+}
+
+// Modo Xerox: cada página vira imagem 1-bit (preto e branco puro) em CCITT G4.
+// Ideal para documento escaneado; o texto deixa de ser selecionável.
+async function xeroxCompress(input, output, jobDir) {
+  const pages = await pageCount(input);
+  if (pages > MAX_RASTER_PAGES) {
+    throw new UserError(`O modo Xerox aceita até ${MAX_RASTER_PAGES} páginas.`);
+  }
+  const rasterDir = path.join(jobDir, 'xerox');
+  await fsp.mkdir(rasterDir, { recursive: true });
+  await run('pdftoppm', ['-gray', '-r', '200', input, path.join(rasterDir, 'p')], { timeout: 300000 });
+  const frames = (await fsp.readdir(rasterDir)).filter((n) => n.endsWith('.pgm')).sort();
+  if (!frames.length) throw new UserError('Nenhuma página encontrada no PDF.');
+  // Uma página por vez: todas juntas no ImageMagick estouram a memória
+  const pagePdfs = [];
+  for (const name of frames) {
+    const pagePdf = path.join(rasterDir, name.replace(/\.pgm$/, '.pdf'));
+    await run('convert', [`pgm:${path.join(rasterDir, name)}`, '-threshold', '55%', '-type', 'bilevel',
+      '-compress', 'Group4', '-density', '200', '-units', 'PixelsPerInch', `pdf:${pagePdf}`], { timeout: 120000 });
+    await fsp.unlink(path.join(rasterDir, name));
+    pagePdfs.push(pagePdf);
+  }
+  if (pagePdfs.length === 1) {
+    await fsp.rename(pagePdfs[0], output);
+  } else {
+    await run('python3', [MERGE_SCRIPT, output, 'original', ...pagePdfs], { timeout: 180000 });
+  }
+}
+
+async function compressWith(level, input, output, paperSize, jobDir) {
+  const raw = `${output}.raw.pdf`;
+  if (level.xerox) {
+    await xeroxCompress(input, raw, jobDir);
+  } else {
+    await run('gs', gsCompressArgs(input, raw, level, paperSize), { timeout: 300000 });
+  }
+  // Passo final sem perdas: object streams, Flate nível 9, sem metadados inúteis
+  try {
+    await run('python3', [OPTIMIZE_SCRIPT, raw, output], { timeout: 120000 });
+    await fsp.unlink(raw);
+  } catch (err) {
+    console.error('Aviso: optimize_pdf falhou, usando saída do gs:', err.message);
+    await fsp.rename(raw, output);
+  }
+  return (await fsp.stat(output)).size;
+}
+
+app.post('/api/compress', uploadPdf.single('pdf'), job(async (req, { jobDir }) => {
+  if (!req.file) throw new UserError('Nenhum arquivo enviado.');
+  const profile = String(req.body.profile || '');
+  if (!LEVELS[profile] && profile !== 'xerox') throw new UserError('Perfil de compressão inválido.');
+  const paperSize = normalizePaperSize(req.body.paperSize, 'original');
+  const gray = flag(req.body.grayscale);
+  const targetMB = req.body.targetMB ? Number(String(req.body.targetMB).replace(',', '.')) : 0;
+  if (req.body.targetMB && !(targetMB > 0 && targetMB < 1000)) {
+    throw new UserError('Tamanho máximo inválido.');
   }
 
-  const paperSize = normalizePaperSize(req.body.paperSize);
-  if (!paperSize) {
-    cleanupUploads(files);
-    return res.status(400).json({ error: 'Tamanho de papel inválido.' });
-  }
+  const input = await stage(req.file, jobDir, 'entrada.pdf');
+  const inputSize = req.file.size;
+  const output = path.join(jobDir, 'saida.pdf');
 
-  let order = files.map((_, i) => i);
-  if (req.body.order) {
-    try {
-      const parsed = JSON.parse(req.body.order);
-      if (Array.isArray(parsed) && parsed.length === files.length) {
-        order = parsed.map(Number);
+  return withSlot(async () => {
+    let size;
+    let targetMet = null;
+    let usedLevel = profile;
+
+    if (targetMB) {
+      // Busca binária na escada (o tamanho cai conforme o nível sobe): acha
+      // o nível mais leve que cabe no alvo com ~3 compressões em vez de 8.
+      // O Xerox (último degrau) só entra se nenhum nível normal couber.
+      const target = targetMB * 1024 * 1024;
+      const ladder = TARGET_LADDER.map((l) => (gray && !l.xerox ? { ...l, gray: true } : l));
+      const tried = new Map();
+      const attempt = async (i) => {
+        if (!tried.has(i)) {
+          const candidate = path.join(jobDir, `tentativa_${i}.pdf`);
+          try {
+            tried.set(i, { path: candidate, size: await compressWith(ladder[i], input, candidate, paperSize, jobDir), step: i });
+          } catch (err) {
+            // Um degrau que falha (ex.: Xerox com páginas demais) não derruba a busca
+            console.error(`Aviso: nível ${i + 1} falhou:`, err.message);
+            tried.set(i, null);
+          }
+        }
+        return tried.get(i);
+      };
+      const lastNormal = ladder.length - 2;
+      let lo = 0;
+      let hi = lastNormal;
+      let fit = null;
+      while (lo <= hi) {
+        const mid = Math.floor((lo + hi) / 2);
+        const r = await attempt(mid);
+        if (r && r.size <= target) {
+          fit = r;
+          hi = mid - 1;
+        } else {
+          lo = mid + 1;
+        }
       }
-    } catch (_) {}
-  }
+      // Xerox em PDF grande é lento e quase sempre é catálogo vetorial, onde
+      // rasterizar nem ajuda — só tenta em documentos curtos
+      if (!fit && (await pageCount(input)) <= 40) {
+        const xerox = await attempt(ladder.length - 1);
+        if (xerox && xerox.size <= target) fit = xerox;
+      }
+      const results = [...tried.values()].filter(Boolean);
+      const best = fit || results.sort((a, b) => a.size - b.size)[0];
+      if (!best) throw new UserError('Falha ao comprimir o PDF.', 500);
+      await fsp.rename(best.path, output);
+      size = best.size;
+      targetMet = Boolean(fit);
+      usedLevel = ladder[best.step].xerox ? 'modo Xerox' : `nível ${best.step + 1} de ${ladder.length}`;
+    } else {
+      const level = profile === 'xerox' ? { xerox: true } : { ...LEVELS[profile], gray };
+      size = await compressWith(level, input, output, paperSize, jobDir);
+    }
 
-  const inputPaths = order.map(i => files[i].path);
-  const outputId = newOutputId();
-  const outputPath = outputPathFor(outputId, 'pdf');
+    // Nunca devolve algo maior que o original (quando não há troca de papel
+    // nem conversão de cor pedida, o original otimizado sem perdas é melhor)
+    let alreadyOptimal = false;
+    if (size >= inputSize && paperSize === 'original' && !gray && profile !== 'xerox') {
+      const lossless = path.join(jobDir, 'sem_perdas.pdf');
+      try {
+        await run('python3', [OPTIMIZE_SCRIPT, input, lossless], { timeout: 120000 });
+        const llSize = (await fsp.stat(lossless)).size;
+        await fsp.rename(llSize < inputSize ? lossless : input, output);
+      } catch (_) {
+        await fsp.copyFile(input, output);
+      }
+      alreadyOptimal = true;
+    }
+
+    const out = await publish(output, 'pdf');
+    return {
+      ...out,
+      originalName: req.file.originalname,
+      originalSize: inputSize,
+      paperSize,
+      alreadyOptimal,
+      targetMet,
+      usedLevel
+    };
+  }).catch((err) => { throw scriptError(err, 'Falha ao comprimir o PDF. Ele pode estar protegido ou corrompido.'); });
+}));
+
+// --- Juntar ------------------------------------------------------------------
+
+app.post('/api/merge', uploadPdfs.array('pdfs', 50), job(async (req, { jobDir }) => {
+  const files = req.files || [];
+  if (files.length < 2) throw new UserError('Envie pelo menos 2 PDFs para juntar.');
+  const paperSize = normalizePaperSize(req.body.paperSize, 'a4');
+  const order = parseOrder(req.body.order, files.length);
+  const inputPaths = order.map((i) => files[i].path);
+  const output = path.join(jobDir, 'juntado.pdf');
 
   // merge_pdf.py embute cada página como Form XObject no PDF de saída:
   // os streams de fonte e encoding são copiados byte a byte, sem passar por
   // nenhum engine de renderização. O tamanho de papel é normalizado via CTM
   // (transformation matrix) na nova página, não por re-renderização.
-  execFile('python3', [MERGE_SCRIPT, outputPath, paperSize, ...inputPaths], { timeout: 120000 }, (err) => {
-    cleanupUploads(files);
-
-    if (err) {
-      console.error('Erro no merge_pdf.py:', err);
-      return res.status(500).json({ error: 'Falha ao juntar os PDFs.' });
-    }
-
-    fs.stat(outputPath, (statErr, stats) => {
-      if (statErr) {
-        return res.status(500).json({ error: 'Arquivo de saída não encontrado.' });
-      }
-      scheduleOutputCleanup(outputPath);
-      res.json({
-        id: outputId,
-        ext: 'pdf',
-        size: stats.size,
-        originalName: 'merged.pdf',
-        paperSize
-      });
-    });
-  });
-});
-
-// --- Conversão Word <-> PDF (LibreOffice headless) ---
-app.post('/api/word', uploadWord.single('file'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
+  // "original" não está na tabela de tamanhos do script = mantém o tamanho.
+  try {
+    await withSlot(() => run('python3', [MERGE_SCRIPT, output, paperSize, ...inputPaths], { timeout: 180000 }));
+  } catch (err) {
+    throw scriptError(err, 'Falha ao juntar os PDFs. Algum deles pode estar protegido ou corrompido.');
   }
+  const out = await publish(output, 'pdf');
+  return { ...out, originalName: 'juntado.pdf', paperSize, count: files.length };
+}));
 
+// --- Word <-> PDF --------------------------------------------------------------
+
+// Perfil do LibreOffice endurecido: macros desligadas e links externos
+// (OLE/imagens vinculadas) nunca atualizados — evita que um .docx malicioso
+// puxe arquivos locais ou URLs internas para dentro do PDF gerado.
+async function hardenedLoProfile(jobDir) {
+  const profileDir = path.join(jobDir, 'lo-profile');
+  const userDir = path.join(profileDir, 'user');
+  await fsp.mkdir(userDir, { recursive: true });
+  await fsp.copyFile(LO_HARDENING, path.join(userDir, 'registrymodifications.xcu'));
+  return profileDir;
+}
+
+app.post('/api/word', uploadWord.single('file'), job(async (req, { jobDir }) => {
+  if (!req.file) throw new UserError('Nenhum arquivo enviado.');
   const direction = req.body.direction;
   const inExt = path.extname(req.file.originalname).toLowerCase();
 
   if (direction !== 'word2pdf' && direction !== 'pdf2word') {
-    fs.unlink(req.file.path, () => {});
-    return res.status(400).json({ error: 'Direção de conversão inválida.' });
+    throw new UserError('Direção de conversão inválida.');
   }
   if (direction === 'word2pdf' && !WORD_EXT.includes(inExt)) {
-    fs.unlink(req.file.path, () => {});
-    return res.status(400).json({ error: 'Para Word → PDF, envie um documento (.docx, .doc, .odt, .rtf, .txt).' });
+    throw new UserError('Para Word → PDF, envie um documento (.docx, .doc, .odt, .rtf, .txt).');
   }
   if (direction === 'pdf2word' && inExt !== '.pdf') {
-    fs.unlink(req.file.path, () => {});
-    return res.status(400).json({ error: 'Para PDF → Word, envie um arquivo .pdf.' });
+    throw new UserError('Para PDF → Word, envie um arquivo .pdf.');
   }
 
   const targetExt = direction === 'word2pdf' ? 'pdf' : 'docx';
-
-  const jobId = newOutputId();
-  const jobDir = path.join(WORK_DIR, jobId);
-  fs.mkdirSync(jobDir, { recursive: true });
-
-  // Os conversores detectam o formato pela extensão: copia com a extensão correta
-  const inputPath = path.join(jobDir, `entrada${inExt}`);
-  fs.copyFileSync(req.file.path, inputPath);
-  fs.unlink(req.file.path, () => {});
-
+  const inputPath = await stage(req.file, jobDir, `entrada${inExt}`);
   const producedPath = path.join(jobDir, `entrada.${targetExt}`);
 
-  // Move o resultado para a pasta de outputs e responde
-  const finish = () => {
-    fs.stat(producedPath, (statErr, stats) => {
-      if (statErr) {
-        removeWorkDir(jobDir);
-        return res.status(500).json({ error: 'Arquivo convertido não encontrado.' });
+  await withSlot(async () => {
+    if (direction === 'pdf2word') {
+      // pdf2docx reconstrói parágrafos e tabelas (evita o excesso de caixas de
+      // texto soltas que o LibreOffice gera ao importar PDF)
+      await run('pdf2docx', ['convert', inputPath, producedPath], { timeout: 300000 });
+      // Ajusta o idioma do .docx para a língua de origem (best-effort)
+      try {
+        await run('python3', [LANG_SCRIPT, producedPath, inputPath], { timeout: 30000 });
+      } catch (langErr) {
+        console.error('Aviso ao ajustar idioma do .docx:', langErr.message);
       }
-      const outputId = newOutputId();
-      const outputPath = outputPathFor(outputId, targetExt);
-      fs.copyFile(producedPath, outputPath, (copyErr) => {
-        removeWorkDir(jobDir);
-        if (copyErr) {
-          return res.status(500).json({ error: 'Falha ao salvar o arquivo convertido.' });
-        }
-        scheduleOutputCleanup(outputPath);
-        res.json({
-          id: outputId,
-          ext: targetExt,
-          size: stats.size,
-          originalName: req.file.originalname
-        });
-      });
-    });
-  };
-
-  if (direction === 'pdf2word') {
-    // pdf2docx reconstrói parágrafos e tabelas (evita o excesso de caixas de
-    // texto soltas que o LibreOffice gera ao importar PDF)
-    execFile('pdf2docx', ['convert', inputPath, producedPath], { timeout: 180000 }, (err) => {
-      if (err) {
-        console.error('Erro no pdf2docx:', err);
-        removeWorkDir(jobDir);
-        return res.status(500).json({ error: 'Falha na conversão. O PDF pode estar protegido, digitalizado (imagem) ou corrompido.' });
-      }
-      // Ajusta o idioma do .docx para a língua de origem (best-effort: o
-      // pdf2docx marca tudo como en-US por padrão). Falha aqui não impede o
-      // download — apenas mantém o idioma padrão.
-      execFile('python3', [LANG_SCRIPT, producedPath, inputPath], { timeout: 30000 }, (langErr) => {
-        if (langErr) console.error('Aviso ao ajustar idioma do .docx:', langErr.message);
-        finish();
-      });
-    });
-    return;
-  }
-
-  // word2pdf: LibreOffice headless
-  const profileDir = path.join(jobDir, 'lo-profile');
-  const args = [
-    '--headless',
-    '--norestore',
-    `-env:UserInstallation=file://${profileDir}`,
-    '--convert-to', 'pdf',
-    '--outdir', jobDir,
-    inputPath
-  ];
-  execFile('soffice', args, { timeout: 120000 }, (err) => {
-    if (err) {
-      console.error('Erro no LibreOffice:', err);
-      removeWorkDir(jobDir);
-      return res.status(500).json({ error: 'Falha na conversão. O arquivo pode estar corrompido ou protegido.' });
+      return;
     }
-    finish();
+    const profileDir = await hardenedLoProfile(jobDir);
+    await run('soffice', [
+      '--headless',
+      '--norestore',
+      '--nolockcheck',
+      `-env:UserInstallation=file://${profileDir}`,
+      '--convert-to', 'pdf',
+      '--outdir', jobDir,
+      inputPath
+    ], { timeout: 180000 });
+  }).catch((err) => {
+    throw scriptError(err, direction === 'pdf2word'
+      ? 'Falha na conversão. O PDF pode estar protegido, digitalizado (imagem) ou corrompido.'
+      : 'Falha na conversão. O arquivo pode estar corrompido ou protegido.');
   });
-});
 
-// --- Conversão de imagens (PDF <-> imagem) ---
-app.post('/api/image', uploadImage.array('files', 50), (req, res) => {
+  try {
+    await fsp.access(producedPath);
+  } catch (_) {
+    throw new UserError('Arquivo convertido não encontrado.', 500);
+  }
+  const out = await publish(producedPath, targetExt);
+  return { ...out, originalName: req.file.originalname };
+}));
+
+// --- Imagens <-> PDF -----------------------------------------------------------
+
+app.post('/api/image', uploadImage.array('files', 50), job(async (req, ctx) => {
   const files = req.files || [];
-  if (!files.length) {
-    return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
-  }
+  if (!files.length) throw new UserError('Nenhum arquivo enviado.');
+  if (req.body.direction === 'img2pdf') return img2pdf(req, files, ctx);
+  if (req.body.direction === 'pdf2img') return pdf2img(req, files, ctx);
+  throw new UserError('Direção de conversão inválida.');
+}));
 
-  const direction = req.body.direction;
-
-  if (direction === 'img2pdf') {
-    return handleImg2Pdf(req, res, files);
-  }
-  if (direction === 'pdf2img') {
-    return handlePdf2Img(req, res, files);
-  }
-
-  cleanupUploads(files);
-  return res.status(400).json({ error: 'Direção de conversão inválida.' });
-});
-
-function handleImg2Pdf(req, res, files) {
+async function img2pdf(req, files, { jobDir }) {
   const images = files.filter((f) => IMAGE_EXT.includes(path.extname(f.originalname).toLowerCase()));
-  if (!images.length) {
-    cleanupUploads(files);
-    return res.status(400).json({ error: 'Para Imagens → PDF, envie ao menos uma imagem.' });
-  }
-
-  let order = images.map((_, i) => i);
-  if (req.body.order) {
-    try {
-      const parsed = JSON.parse(req.body.order);
-      if (Array.isArray(parsed) && parsed.length === images.length) {
-        order = parsed.map(Number);
-      }
-    } catch (_) {}
-  }
-  const orderedPaths = order.map((i) => images[i].path);
-
-  const outputId = newOutputId();
-  const outputPath = outputPathFor(outputId, 'pdf');
+  if (!images.length) throw new UserError('Para Imagens → PDF, envie ao menos uma imagem.');
+  const order = parseOrder(req.body.order, images.length);
+  const inputs = order.map((i) => {
+    const f = images[i];
+    return `${IMAGE_CODER[path.extname(f.originalname).toLowerCase()]}:${f.path}`;
+  });
+  const output = path.join(jobDir, 'imagens.pdf');
 
   // -auto-orient respeita EXIF; sem downsample para manter qualidade
-  const args = ['-auto-orient', ...orderedPaths, outputPath];
-
-  execFile('convert', args, { timeout: 120000 }, (err) => {
-    cleanupUploads(files);
-    if (err) {
-      console.error('Erro no ImageMagick (img2pdf):', err);
-      return res.status(500).json({ error: 'Falha ao converter as imagens em PDF.' });
-    }
-    fs.stat(outputPath, (statErr, stats) => {
-      if (statErr) {
-        return res.status(500).json({ error: 'Arquivo de saída não encontrado.' });
-      }
-      scheduleOutputCleanup(outputPath);
-      res.json({
-        id: outputId,
-        ext: 'pdf',
-        size: stats.size,
-        originalName: 'imagens.pdf',
-        count: images.length
-      });
-    });
-  });
+  try {
+    await withSlot(() => run('convert', ['-auto-orient', ...inputs, `pdf:${output}`], { timeout: 180000 }));
+  } catch (err) {
+    throw scriptError(err, 'Falha ao converter as imagens em PDF. Alguma imagem pode estar corrompida.');
+  }
+  const out = await publish(output, 'pdf');
+  return { ...out, originalName: 'imagens.pdf', count: images.length };
 }
 
-function handlePdf2Img(req, res, files) {
+async function pdf2img(req, files, { jobDir }) {
   const pdf = files.find((f) => path.extname(f.originalname).toLowerCase() === '.pdf');
-  if (!pdf) {
-    cleanupUploads(files);
-    return res.status(400).json({ error: 'Para PDF → Imagens, envie um arquivo .pdf.' });
-  }
-
+  if (!pdf) throw new UserError('Para PDF → Imagens, envie um arquivo .pdf.');
   const format = String(req.body.format || 'png').trim().toLowerCase();
-  if (!IMAGE_OUT_FORMATS.has(format)) {
-    cleanupUploads(files);
-    return res.status(400).json({ error: 'Formato de imagem inválido.' });
+  if (!IMAGE_OUT_FORMATS.has(format)) throw new UserError('Formato de imagem inválido.');
+
+  const pdfPath = await stage(pdf, jobDir, 'entrada.pdf');
+  const pages = await pageCount(pdfPath);
+  if (pages > MAX_RASTER_PAGES) {
+    throw new UserError(`PDF → Imagens aceita até ${MAX_RASTER_PAGES} páginas.`);
   }
+  const baseName = path.basename(pdf.originalname, path.extname(pdf.originalname));
 
-  const jobId = newOutputId();
-  const jobDir = path.join(WORK_DIR, jobId);
-  fs.mkdirSync(jobDir, { recursive: true });
+  const produced = await withSlot(async () => {
+    // pdftoppm gera PNG/JPEG/TIFF direto; webp/bmp passam pelo ImageMagick
+    const pageBase = path.join(jobDir, 'pagina');
+    const native = { png: ['-png', 'png'], jpg: ['-jpeg', 'jpg'], tiff: ['-tiff', 'tif'] }[format];
+    const [ppmFlag, ppmExt] = native || ['-png', 'png'];
+    await run('pdftoppm', [ppmFlag, '-r', '150', pdfPath, pageBase], { timeout: 300000 });
+    let names = (await fsp.readdir(jobDir)).filter((n) => n.startsWith('pagina') && n.endsWith(`.${ppmExt}`)).sort();
+    if (!names.length) throw new UserError('Nenhuma página encontrada no PDF.', 500);
 
-  const pdfPath = path.join(jobDir, 'entrada.pdf');
-  fs.copyFileSync(pdf.path, pdfPath);
-  cleanupUploads(files);
-
-  // pdftoppm renderiza páginas em PNG (sem problemas de policy), 150 dpi
-  const pageBase = path.join(jobDir, 'pagina');
-  execFile('pdftoppm', ['-png', '-r', '150', pdfPath, pageBase], { timeout: 120000 }, (ppmErr) => {
-    if (ppmErr) {
-      console.error('Erro no pdftoppm:', ppmErr);
-      removeWorkDir(jobDir);
-      return res.status(500).json({ error: 'Falha ao renderizar o PDF. Pode estar protegido ou corrompido.' });
-    }
-
-    const pngPages = fs.readdirSync(jobDir)
-      .filter((n) => n.startsWith('pagina') && n.endsWith('.png'))
-      .sort();
-
-    if (!pngPages.length) {
-      removeWorkDir(jobDir);
-      return res.status(500).json({ error: 'Nenhuma página encontrada no PDF.' });
-    }
-
-    convertPages(jobDir, pngPages, format, (convErr, finalPages) => {
-      if (convErr) {
-        console.error('Erro ao converter formato:', convErr);
-        removeWorkDir(jobDir);
-        return res.status(500).json({ error: 'Falha ao converter o formato das imagens.' });
+    const finalNames = [];
+    for (const name of names) {
+      const target = name.replace(/\.[^.]+$/, `.${format}`);
+      if (native) {
+        if (target !== name) await fsp.rename(path.join(jobDir, name), path.join(jobDir, target));
+      } else {
+        await run('convert', [`png:${path.join(jobDir, name)}`, `${format}:${path.join(jobDir, target)}`], { timeout: 120000 });
       }
-      finalizePdf2Img(res, jobDir, finalPages, format, pdf.originalname);
-    });
-  });
+      finalNames.push(target);
+    }
+    names = finalNames;
+
+    if (names.length === 1) return { file: path.join(jobDir, names[0]), ext: format, count: 1 };
+    const zipPath = path.join(jobDir, 'imagens.zip');
+    await run('zip', ['-j', '-q', zipPath, ...names.map((n) => path.join(jobDir, n))], { timeout: 180000 });
+    return { file: zipPath, ext: 'zip', count: names.length };
+  }).catch((err) => { throw scriptError(err, 'Falha ao renderizar o PDF. Pode estar protegido ou corrompido.'); });
+
+  const out = await publish(produced.file, produced.ext);
+  const originalName = produced.ext === 'zip' ? `${baseName}_${format}.zip` : `${baseName}.${format}`;
+  return { ...out, originalName, count: produced.count };
 }
 
-// Converte cada PNG para o formato alvo (ou mantém se já for PNG)
-function convertPages(jobDir, pngPages, format, done) {
-  if (format === 'png') {
-    return done(null, pngPages);
-  }
-  const finalPages = [];
-  let i = 0;
-  const next = () => {
-    if (i >= pngPages.length) return done(null, finalPages);
-    const src = path.join(jobDir, pngPages[i]);
-    const outName = pngPages[i].replace(/\.png$/, `.${format}`);
-    const dst = path.join(jobDir, outName);
-    execFile('convert', [src, dst], { timeout: 120000 }, (err) => {
-      if (err) return done(err);
-      finalPages.push(outName);
-      i += 1;
-      next();
-    });
-  };
-  next();
-}
+// --- PDF -> Texto ----------------------------------------------------------------
 
-function finalizePdf2Img(res, jobDir, pages, format, originalName) {
-  const baseName = path.basename(originalName, path.extname(originalName));
+app.post('/api/text', uploadPdf.single('pdf'), job(async (req, { jobDir }) => {
+  if (!req.file) throw new UserError('Nenhum arquivo enviado.');
+  const input = await stage(req.file, jobDir, 'entrada.pdf');
+  const output = path.join(jobDir, 'saida.txt');
+  const args = [TEXT_SCRIPT, input, output];
+  if (!flag(req.body.removeHeaders ?? '1')) args.push('--keep-headers');
+  if (flag(req.body.keepLines)) args.push('--keep-lines');
+  if (!flag(req.body.ocr ?? '1')) args.push('--no-ocr');
 
-  if (pages.length === 1) {
-    const outputId = newOutputId();
-    const outputPath = outputPathFor(outputId, format);
-    fs.copyFile(path.join(jobDir, pages[0]), outputPath, (err) => {
-      removeWorkDir(jobDir);
-      if (err) {
-        return res.status(500).json({ error: 'Falha ao salvar a imagem.' });
-      }
-      fs.stat(outputPath, (statErr, stats) => {
-        scheduleOutputCleanup(outputPath);
-        res.json({
-          id: outputId,
-          ext: format,
-          size: statErr ? 0 : stats.size,
-          originalName: `${baseName}.${format}`,
-          count: 1
-        });
-      });
-    });
-    return;
+  let stats;
+  try {
+    const { stdout } = await withSlot(() => run('python3', args, { timeout: 600000 }));
+    stats = parseStats(stdout);
+  } catch (err) {
+    throw scriptError(err, 'Falha ao extrair o texto. O PDF pode estar corrompido.');
   }
 
-  // Múltiplas páginas -> zip
-  const outputId = newOutputId();
-  const outputPath = outputPathFor(outputId, 'zip');
-  execFile('zip', ['-j', '-q', outputPath, ...pages.map((p) => path.join(jobDir, p))], { timeout: 120000 }, (err) => {
-    removeWorkDir(jobDir);
-    if (err) {
-      console.error('Erro ao zipar imagens:', err);
-      return res.status(500).json({ error: 'Falha ao empacotar as imagens.' });
-    }
-    fs.stat(outputPath, (statErr, stats) => {
-      if (statErr) {
-        return res.status(500).json({ error: 'Arquivo de saída não encontrado.' });
-      }
-      scheduleOutputCleanup(outputPath);
-      res.json({
-        id: outputId,
-        ext: 'zip',
-        size: stats.size,
-        originalName: `${baseName}_${format}.zip`,
-        count: pages.length
-      });
-    });
-  });
+  const fh = await fsp.open(output, 'r');
+  const { bytesRead, buffer } = await fh.read(Buffer.alloc(1500), 0, 1500, 0);
+  await fh.close();
+  // Corta num limite de caractere UTF-8 válido
+  const preview = buffer.subarray(0, bytesRead).toString('utf8').replace(/�+$/, '');
+
+  const out = await publish(output, 'txt');
+  return { ...out, originalName: req.file.originalname, stats, preview };
+}));
+
+// --- PDF -> Excel ----------------------------------------------------------------
+
+app.post('/api/excel', uploadPdf.single('pdf'), job(async (req, { jobDir }) => {
+  if (!req.file) throw new UserError('Nenhum arquivo enviado.');
+  const input = await stage(req.file, jobDir, 'entrada.pdf');
+  const output = path.join(jobDir, 'saida.xlsx');
+  const args = [EXCEL_SCRIPT, input, output];
+  if (flag(req.body.singleSheet)) args.push('--single-sheet');
+  if (!flag(req.body.mergePages ?? '1')) args.push('--no-merge');
+  if (!flag(req.body.convertNumbers ?? '1')) args.push('--raw');
+
+  let stats;
+  try {
+    const { stdout } = await withSlot(() => run('python3', args, { timeout: 600000 }));
+    stats = parseStats(stdout);
+  } catch (err) {
+    throw scriptError(err, 'Falha ao extrair as tabelas. O PDF pode estar corrompido.');
+  }
+  const out = await publish(output, 'xlsx');
+  return { ...out, originalName: req.file.originalname, stats };
+}));
+
+// --- Download ------------------------------------------------------------------
+
+function safeDownloadName(raw, fallback) {
+  const name = String(raw || '')
+    .normalize('NFC')
+    .replace(/[\\/:*?"<>|\u0000-\u001f\u007f]/g, '_')
+    .replace(/^\.+/, '')
+    .trim()
+    .slice(0, 150);
+  return name || fallback;
 }
 
 app.get('/api/download/:id', (req, res) => {
@@ -569,19 +745,29 @@ app.get('/api/download/:id', (req, res) => {
     }
     const match = files.find((name) => name.startsWith(`${OUTPUT_PREFIX}${id}.`));
     if (!match) {
-      return res.status(404).send('Arquivo não encontrado.');
+      return res.status(404).send('Arquivo não encontrado (ele expira em alguns minutos).');
     }
     const filePath = path.join(OUTPUT_DIR, match);
-    const fallbackExt = path.extname(match) || '.pdf';
-    const downloadName = (req.query.name || `comprimido${fallbackExt}`).replace(/[^\w\-. ]/g, '_');
-    res.download(filePath, downloadName);
+    const ext = path.extname(match) || '.pdf';
+    res.download(filePath, safeDownloadName(req.query.name, `ihatepdf${ext}`));
   });
 });
 
-app.use((err, _req, res, _next) => {
-  res.status(400).json({ error: err.message || 'Erro inesperado.' });
+// Erros do multer (tipo/tamanho/quantidade) e afins. Uploads parciais são
+// apagados aqui — antes eles ficavam órfãos em uploads/ para sempre.
+app.use((err, req, res, _next) => {
+  cleanupUploads(uploadedFiles(req));
+  let message = err instanceof UserError ? err.message : 'Erro inesperado.';
+  if (err instanceof multer.MulterError) {
+    message = {
+      LIMIT_FILE_SIZE: 'Arquivo grande demais (máximo 200 MB).',
+      LIMIT_FILE_COUNT: 'Arquivos demais de uma vez.',
+      LIMIT_UNEXPECTED_FILE: 'Arquivos demais ou campo inesperado.'
+    }[err.code] || 'Upload inválido.';
+  }
+  res.status(err.status && err.status < 600 ? err.status : 400).json({ error: message });
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`I HATE PDF rodando em http://0.0.0.0:${PORT}`);
+  console.log(`I HATE PDF rodando em http://0.0.0.0:${PORT} (jobs simultâneos: ${MAX_JOBS})`);
 });
