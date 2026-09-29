@@ -58,6 +58,7 @@
   let selected = null; // objeto criado selecionado
   let target = null; // { kind: 'orig', key } | { kind: 'obj', obj } — alvo da faixa "Fonte"
   let uidSeq = 0;
+  let lastSaved = ''; // ops do último salvamento (para não avisar à toa ao sair)
   const defaults = { fontKey: DEFAULT_FONT, size: 12, bold: false, italic: false, underline: false, color: '#000000' };
 
   const origs = new Map(); // "página:id" -> { page, el, node }
@@ -117,6 +118,8 @@
     edits.forEach((e, key) => { if (isChanged(key, e)) n += 1; });
     return n;
   }
+
+  const hasUnsaved = () => changeCount() > 0 && JSON.stringify(buildOps()) !== lastSaved;
 
   function refreshState() {
     const n = changeCount();
@@ -375,6 +378,7 @@
 
   function resetState() {
     session = null;
+    lastSaved = '';
     pagesMeta = [];
     origs.clear();
     edits.clear();
@@ -953,6 +957,7 @@
         if (res.status === 404) throw new Error((data && data.error) || 'Sessão expirou. Abra o PDF de novo.');
         throw new Error((data && data.error) || `Erro no servidor (${res.status}).`);
       }
+      lastSaved = JSON.stringify(ops);
       const s = data.stats || {};
       const parts = [];
       if (s.edited) parts.push(`Trechos reescritos: <strong>${s.edited}</strong>`);
@@ -989,7 +994,7 @@
   edDropzone.addEventListener('drop', (e) => { const f = e.dataTransfer.files[0]; if (f) openPdf(f); });
 
   $('edCloseBtn').addEventListener('click', () => {
-    if (changeCount() && !window.confirm('Largar esse PDF? As alterações não salvas vão pro lixo.')) return;
+    if (hasUnsaved() && !window.confirm('Largar esse PDF? As alterações não salvas vão pro lixo.')) return;
     resetState();
     setWide(false);
     edWorkspace.classList.add('hidden');
@@ -999,7 +1004,7 @@
   });
 
   window.addEventListener('beforeunload', (e) => {
-    if (session && changeCount()) {
+    if (session && hasUnsaved()) {
       e.preventDefault();
       e.returnValue = '';
     }
