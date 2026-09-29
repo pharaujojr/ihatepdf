@@ -1,18 +1,24 @@
-// --- Editor de PDF (TESTE) ---
+// --- Editor de PDF (TESTE), com cara de Word ---
 // A página é uma imagem gerada pelo servidor; por cima vai uma camada com os
-// trechos de texto do PDF (editáveis), os campos de formulário e os objetos
-// que o usuário cria. Tudo guardado em pontos PDF (origem no topo esquerdo)
-// e posicionado em % — a página pode ter qualquer largura na tela.
+// trechos de texto do PDF (editáveis e formatáveis), os campos de formulário
+// e os objetos criados. Tudo guardado em pontos PDF (origem no topo esquerdo)
+// e posicionado em % dentro da página — o zoom só muda a largura da página.
 (() => {
   const $ = (id) => document.getElementById(id);
   const edDropzone = $('edDropzone');
   const edInput = $('edInput');
   const edWorkspace = $('edWorkspace');
+  const edCanvas = $('edCanvas');
   const edPages = $('edPages');
   const edHint = $('edHint');
   const edColor = $('edColor');
+  const edColorBar = $('edColorBar');
   const edSize = $('edSize');
   const edBold = $('edBold');
+  const edItalic = $('edItalic');
+  const edUnderline = $('edUnderline');
+  const edFontBtn = $('edFontBtn');
+  const edFontMenu = $('edFontMenu');
   const edDelete = $('edDelete');
   const edUndo = $('edUndo');
   const edSaveBtn = $('edSaveBtn');
@@ -20,37 +26,51 @@
   const edFlatten = $('edFlatten');
   const edFlattenRow = $('edFlattenRow');
   const edImageInput = $('edImageInput');
+  const edStatusPage = $('edStatusPage');
+  const edZoomRange = $('edZoomRange');
+  const edZoomLabel = $('edZoomLabel');
   const signDialog = $('edSignDialog');
   const signCanvas = $('edSignCanvas');
+  const testBanner = document.querySelector('#tab-editor .test-banner');
+
+  const PT_TO_PX = 96 / 72;
+  const DEFAULT_FONT = 'liberation-sans';
 
   const HINTS = {
-    select: 'Clique em qualquer texto do PDF para reescrever. Enter confirma, Esc desiste. Objetos que você criou podem ser arrastados.',
-    text: 'Clique na página onde quer escrever. Arraste o texto depois se errar o lugar (vai errar).',
+    select: 'Clique num texto do PDF para reescrever; a faixa "Fonte" formata o trecho selecionado.',
+    text: 'Clique na página onde quer escrever.',
     sign: 'Desenhe a assinatura, depois clique na página onde ela vai.',
-    image: 'Escolha a imagem e clique na página onde ela vai. Canto inferior direito redimensiona.',
+    image: 'Escolha a imagem e clique na página onde ela vai.',
     place: 'Agora clique na página onde isso vai.',
     highlight: 'Arraste por cima do que você quer marcar.',
     rect: 'Arraste para desenhar o retângulo.',
-    whiteout: 'Arraste para cobrir de branco. Depois use "Texto novo" por cima, se quiser.',
-    redact: 'Arraste por cima do que precisa sumir. Some DE VERDADE ao salvar: texto, imagem, tudo.'
+    whiteout: 'Arraste para cobrir de branco.',
+    redact: 'Arraste por cima do que precisa sumir. Some DE VERDADE ao salvar.'
   };
 
   let session = null;
   let originalName = '';
   let pagesMeta = [];
+  let catalog = { categories: {}, fonts: [] };
   let mode = 'select';
-  let pendingImage = null; // { data, ratio }
-  let selected = null;
+  let zoom = 1;
+  let pendingImage = null;
+  let selected = null; // objeto criado selecionado
+  let target = null; // { kind: 'orig', key } | { kind: 'obj', obj } — alvo da faixa "Fonte"
   let uidSeq = 0;
+  const defaults = { fontKey: DEFAULT_FONT, size: 12, bold: false, italic: false, underline: false, color: '#000000' };
 
-  const edits = new Map(); // "página:id" -> { page, el, text }
-  const objects = []; // objetos criados, na ordem (camadas)
-  const fieldValues = new Map(); // "página:nome" -> { page, name, value }
-  const history = []; // para desfazer: { kind, ... }
+  const origs = new Map(); // "página:id" -> { page, el, node }
+  const edits = new Map(); // "página:id" -> { text, fmt|null }
+  const objects = [];
+  const fieldValues = new Map();
+  const history = [];
 
   // ---------------------------------------------------------------- utilidades
   const pct = (v, total) => `${(v / total) * 100}%`;
-  const rgbCss = (c) => `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+  const hex = (c) => `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+  const fontByKey = (key) => catalog.fonts.find((f) => f.key === key);
+  const fontName = (key) => (fontByKey(key) || { name: key }).name;
 
   function place(node, page, x0, y0, x1, y1) {
     const { width: w, height: h } = pagesMeta[page];
@@ -60,10 +80,8 @@
     node.style.height = pct(Math.max(y1 - y0, 1), h);
   }
 
-  function fontSizeCss(page, sizePt) {
-    // .ed-page tem container-type: inline-size — cqw acompanha a largura da página
-    return `${(sizePt / pagesMeta[page].width) * 100}cqw`;
-  }
+  // .ed-page tem container-type: inline-size — cqw acompanha a largura da página
+  const fontSizeCss = (page, sizePt) => `${(sizePt / pagesMeta[page].width) * 100}cqw`;
 
   function toPdf(layer, page, clientX, clientY) {
     const r = layer.getBoundingClientRect();
@@ -75,16 +93,28 @@
     };
   }
 
-  function familyOf(font) {
-    const f = (font || '').toLowerCase();
-    if (/mono|courier|consol/.test(f)) return 'monospace';
-    if (/times|georgia|garamond|cambria|(^|[^s])serif/.test(f) && !/sans/.test(f)) return 'serif';
-    return 'sans-serif';
+  function applyFontStyle(node, page, fmt) {
+    FontLib.ensure(fmt.fontKey, fmt.bold, fmt.italic);
+    node.style.fontFamily = FontLib.css(fmt.fontKey);
+    node.style.fontSize = fontSizeCss(page, fmt.size);
+    node.style.fontWeight = fmt.bold ? '700' : '400';
+    node.style.fontStyle = fmt.italic ? 'italic' : 'normal';
+    node.style.textDecoration = fmt.underline ? 'underline' : 'none';
+    node.style.setProperty('--c', fmt.color);
+  }
+
+  function baseFmt(el) {
+    return { fontKey: el.fontKey || DEFAULT_FONT, size: el.size, bold: Boolean(el.bold), italic: Boolean(el.italic), underline: false, color: hex(el.color) };
+  }
+
+  function isChanged(key, e) {
+    const { el } = origs.get(key);
+    return Boolean(e.fmt) || e.text !== el.text;
   }
 
   function changeCount() {
     let n = objects.length + fieldValues.size;
-    edits.forEach((e) => { if (e.text !== e.el.text) n += 1; });
+    edits.forEach((e, key) => { if (isChanged(key, e)) n += 1; });
     return n;
   }
 
@@ -100,16 +130,226 @@
     if (selected && selected.node) selected.node.classList.remove('selected');
     selected = obj;
     if (obj && obj.node) obj.node.classList.add('selected');
+    if (obj && obj.type === 'addText') setTarget({ kind: 'obj', obj });
     refreshState();
   }
 
   function setMode(next) {
     mode = next;
-    document.querySelectorAll('.ed-mode').forEach((b) => b.classList.toggle('active', b.dataset.mode === next || (next === 'place' && b.dataset.mode === pendingImage?.from)));
+    document.querySelectorAll('.ed-mode').forEach((b) => b.classList.toggle('active',
+      b.dataset.mode === next || (next === 'place' && pendingImage && b.dataset.mode === pendingImage.from)));
     edPages.dataset.mode = next;
     edHint.textContent = HINTS[next] || '';
     if (next !== 'select') select(null);
   }
+
+  // ---------------------------------------------------------------- faixa "Fonte"
+  function currentFmt() {
+    if (target && target.kind === 'orig') {
+      const e = edits.get(target.key);
+      return (e && e.fmt) || baseFmt(origs.get(target.key).el);
+    }
+    if (target && target.kind === 'obj') return target.obj;
+    return defaults;
+  }
+
+  function reflectRibbon() {
+    const fmt = currentFmt();
+    edFontBtn.textContent = fontName(fmt.fontKey);
+    edFontBtn.style.fontFamily = FontLib.css(fmt.fontKey);
+    FontLib.ensure(fmt.fontKey);
+    edSize.value = String(Math.round(fmt.size * 10) / 10);
+    edBold.setAttribute('aria-pressed', String(Boolean(fmt.bold)));
+    edItalic.setAttribute('aria-pressed', String(Boolean(fmt.italic)));
+    edUnderline.setAttribute('aria-pressed', String(Boolean(fmt.underline)));
+    edColor.value = fmt.color;
+    edColorBar.style.background = fmt.color;
+    const font = fontByKey(fmt.fontKey);
+    edBold.classList.toggle('unavailable', Boolean(font) && !FontLib.has(font, 'bold'));
+    edItalic.classList.toggle('unavailable', Boolean(font) && !FontLib.has(font, 'italic'));
+  }
+
+  function setTarget(t) {
+    target = t;
+    reflectRibbon();
+  }
+
+  // Aplica uma mudança de formatação ao alvo (ou ao padrão do próximo texto novo)
+  function applyFormat(change) {
+    if (target && target.kind === 'orig') {
+      const { key } = target;
+      const { el, node } = origs.get(key);
+      const existing = edits.get(key);
+      const prev = existing ? { text: existing.text, fmt: existing.fmt && { ...existing.fmt } } : null;
+      const entry = existing || { text: node.isContentEditable ? node.textContent : el.text, fmt: null };
+      entry.fmt = { ...(entry.fmt || baseFmt(el)), ...change };
+      edits.set(key, entry);
+      history.push({ kind: 'orig', key, prev });
+      renderOrig(key);
+    } else if (target && target.kind === 'obj') {
+      const obj = target.obj;
+      history.push({ kind: 'objFormat', obj, prev: { fontKey: obj.fontKey, size: obj.size, bold: obj.bold, italic: obj.italic, underline: obj.underline, color: obj.color } });
+      Object.assign(obj, change);
+      applyFontStyle(obj.node, obj.page, obj);
+      obj.node.style.color = obj.color;
+    } else {
+      Object.assign(defaults, change);
+    }
+    reflectRibbon();
+    refreshState();
+  }
+
+  // Botões da faixa não roubam o foco do texto sendo editado (como no Word)
+  document.querySelectorAll('#edToolbar button.rbtn, .font-btn').forEach((b) => b.addEventListener('pointerdown', (e) => e.preventDefault()));
+
+  edBold.addEventListener('click', () => applyFormat({ bold: !currentFmt().bold }));
+  edItalic.addEventListener('click', () => applyFormat({ italic: !currentFmt().italic }));
+  edUnderline.addEventListener('click', () => applyFormat({ underline: !currentFmt().underline }));
+  $('edGrow').addEventListener('click', () => applyFormat({ size: Math.min(300, Math.round(currentFmt().size + 1)) }));
+  $('edShrink').addEventListener('click', () => applyFormat({ size: Math.max(2, Math.round(currentFmt().size - 1)) }));
+  edSize.addEventListener('change', () => {
+    const v = Number(String(edSize.value).replace(',', '.'));
+    if (v >= 2 && v <= 300) applyFormat({ size: v });
+    else reflectRibbon();
+  });
+  edColor.addEventListener('input', () => { edColorBar.style.background = edColor.value; });
+  edColor.addEventListener('change', () => applyFormat({ color: edColor.value }));
+
+  // Seletor de fontes com prévia (cada nome escrito na própria fonte)
+  function buildFontMenu() {
+    edFontMenu.innerHTML = '';
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'font-search';
+    search.placeholder = 'Procurar fonte...';
+    edFontMenu.appendChild(search);
+    const list = document.createElement('div');
+    list.className = 'font-list';
+    edFontMenu.appendChild(list);
+    const observer = new IntersectionObserver((entries) => entries.forEach((en) => {
+      if (en.isIntersecting) {
+        FontLib.ensure(en.target.dataset.key);
+        observer.unobserve(en.target);
+      }
+    }), { root: list });
+    Object.entries(catalog.categories).forEach(([cat, label]) => {
+      const fonts = catalog.fonts.filter((f) => f.category === cat);
+      if (!fonts.length) return;
+      const h = document.createElement('p');
+      h.className = 'font-cat';
+      h.textContent = label;
+      list.appendChild(h);
+      fonts.forEach((f) => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'font-item';
+        item.dataset.key = f.key;
+        item.dataset.search = f.name.toLowerCase();
+        item.setAttribute('role', 'option');
+        item.textContent = f.name;
+        item.style.fontFamily = FontLib.css(f.key);
+        item.addEventListener('pointerdown', (e) => e.preventDefault());
+        item.addEventListener('click', () => {
+          closeFontMenu();
+          applyFormat({ fontKey: f.key });
+        });
+        list.appendChild(item);
+        observer.observe(item);
+      });
+    });
+    search.addEventListener('input', () => {
+      const q = search.value.trim().toLowerCase();
+      list.querySelectorAll('.font-item').forEach((i) => i.classList.toggle('hidden', Boolean(q) && !i.dataset.search.includes(q)));
+    });
+  }
+
+  function closeFontMenu() {
+    edFontMenu.classList.add('hidden');
+    edFontBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  edFontBtn.addEventListener('click', () => {
+    if (!edFontMenu.classList.contains('hidden')) {
+      closeFontMenu();
+      return;
+    }
+    const r = edFontBtn.getBoundingClientRect();
+    edFontMenu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 310))}px`;
+    edFontMenu.style.top = `${r.bottom}px`;
+    edFontMenu.classList.remove('hidden');
+    edFontBtn.setAttribute('aria-expanded', 'true');
+    const current = edFontMenu.querySelector(`.font-item[data-key="${currentFmt().fontKey}"]`);
+    edFontMenu.querySelectorAll('.font-item').forEach((i) => i.classList.toggle('current', i === current));
+    if (current) current.scrollIntoView({ block: 'center' });
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (!edFontMenu.classList.contains('hidden') && !$('edFontPicker').contains(e.target)) closeFontMenu();
+  });
+
+  // Abas da faixa de opções
+  function showRibbonTab(name) {
+    document.querySelectorAll('.word-tab').forEach((t) => {
+      t.classList.toggle('active', t.dataset.rtab === name);
+      t.setAttribute('aria-selected', String(t.dataset.rtab === name));
+    });
+    document.querySelectorAll('.rgroup').forEach((g) => g.classList.toggle('hidden', g.dataset.rtab !== name));
+  }
+  document.querySelectorAll('.word-tab').forEach((t) => t.addEventListener('click', () => showRibbonTab(t.dataset.rtab)));
+
+  // ---------------------------------------------------------------- zoom
+  function setZoom(z) {
+    zoom = Math.max(0.4, Math.min(2.5, z));
+    edPages.querySelectorAll('.ed-page').forEach((p) => {
+      p.style.width = `${pagesMeta[p.dataset.page].width * zoom * PT_TO_PX}px`;
+    });
+    edZoomRange.value = String(Math.round(zoom * 100));
+    edZoomLabel.textContent = `${Math.round(zoom * 100)}%`;
+  }
+
+  function fitWidth() {
+    const maxW = Math.max(...pagesMeta.map((p) => p.width));
+    setZoom((edCanvas.clientWidth - 48) / (maxW * PT_TO_PX));
+  }
+
+  function fitPage() {
+    const p = pagesMeta[0];
+    setZoom(Math.min((edCanvas.clientWidth - 48) / (p.width * PT_TO_PX), (edCanvas.clientHeight - 32) / (p.height * PT_TO_PX)));
+  }
+
+  $('edFitWidth').addEventListener('click', fitWidth);
+  $('edFitPage').addEventListener('click', fitPage);
+  $('edZoom100').addEventListener('click', () => setZoom(1));
+  $('edZoomIn').addEventListener('click', () => setZoom(Math.round(zoom * 10 + 1) / 10));
+  $('edZoomOut').addEventListener('click', () => setZoom(Math.round(zoom * 10 - 1) / 10));
+  edZoomRange.addEventListener('input', () => setZoom(Number(edZoomRange.value) / 100));
+  edCanvas.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    setZoom(zoom * (e.deltaY < 0 ? 1.1 : 0.9));
+  }, { passive: false });
+
+  edCanvas.addEventListener('scroll', () => {
+    const mid = edCanvas.getBoundingClientRect().top + edCanvas.clientHeight / 2;
+    let current = 0;
+    edPages.querySelectorAll('.ed-page').forEach((p, i) => {
+      if (p.getBoundingClientRect().top < mid) current = i;
+    });
+    edStatusPage.textContent = `Página ${current + 1} de ${pagesMeta.length}`;
+  }, { passive: true });
+
+  // ---------------------------------------------------------------- modo largo
+  function setWide(on) {
+    document.body.classList.toggle('ed-wide', on);
+    if (testBanner) testBanner.classList.toggle('hidden', on);
+  }
+
+  document.addEventListener('ihp:pane', (e) => setWide(e.detail === 'editor' && Boolean(session)));
+
+  // "Usar no editor" da aba Fontes: vira a fonte padrão (ou do texto selecionado)
+  document.addEventListener('ihp:use-font', (e) => {
+    catalog.fonts.length ? applyFormat({ fontKey: e.detail }) : Object.assign(defaults, { fontKey: e.detail });
+    if (!session) edHint.textContent = `Fonte escolhida: ${e.detail}. Abra um PDF e use "Caixa de texto".`;
+  });
 
   // ---------------------------------------------------------------- abrir PDF
   async function openPdf(file) {
@@ -121,7 +361,8 @@
     fd.append('pdf', file);
     startLoading('editor');
     try {
-      const data = await postForm('/api/editor/open', fd);
+      const [data, cat] = await Promise.all([postForm('/api/editor/open', fd), FontLib.catalog()]);
+      catalog = cat;
       stopLoading(true);
       loadSession(data);
     } catch (err) {
@@ -135,11 +376,13 @@
   function resetState() {
     session = null;
     pagesMeta = [];
+    origs.clear();
     edits.clear();
     objects.length = 0;
     fieldValues.clear();
     history.length = 0;
     selected = null;
+    target = null;
     pendingImage = null;
     edPages.innerHTML = '';
   }
@@ -149,14 +392,20 @@
     session = data.session;
     originalName = data.originalName || 'documento.pdf';
     pagesMeta = data.pages;
+    $('edDocName').textContent = originalName;
     edDropzone.classList.add('hidden');
     edWorkspace.classList.remove('hidden');
-    const hasFields = pagesMeta.some((p) => p.fields.length);
-    edFlattenRow.classList.toggle('hidden', !hasFields);
+    edFlattenRow.classList.toggle('hidden', !pagesMeta.some((p) => p.fields.length));
+    buildFontMenu();
     pagesMeta.forEach((p, i) => edPages.appendChild(buildPage(p, i)));
+    setWide(true);
+    showRibbonTab('home');
     setMode('select');
+    setTarget(null);
+    requestAnimationFrame(fitWidth);
+    edStatusPage.textContent = `Página 1 de ${pagesMeta.length}`;
     if (data.scannedPages) {
-      edHint.textContent = `${data.scannedPages} página(s) escaneada(s): não têm texto editável. Passe no OCR antes, ou use Corretivo + Texto novo.`;
+      edHint.textContent = `${data.scannedPages} página(s) escaneada(s) sem texto editável: passe no OCR antes, ou use Corretivo + Caixa de texto.`;
     }
     refreshState();
   }
@@ -165,6 +414,7 @@
     const pageEl = document.createElement('div');
     pageEl.className = 'ed-page';
     pageEl.style.aspectRatio = `${meta.width} / ${meta.height}`;
+    pageEl.style.width = `${meta.width * zoom * PT_TO_PX}px`;
     pageEl.dataset.page = i;
 
     const img = document.createElement('img');
@@ -178,38 +428,47 @@
     layer.className = 'ed-layer';
     pageEl.appendChild(layer);
 
-    meta.elements.forEach((el) => layer.appendChild(buildTextEl(i, el)));
+    meta.elements.forEach((el) => layer.appendChild(buildOrig(i, el)));
     meta.fields.forEach((f) => layer.appendChild(buildField(i, f)));
     attachLayerEvents(layer, i);
-
-    const label = document.createElement('span');
-    label.className = 'ed-page-num';
-    label.textContent = `${i + 1} / ${pagesMeta.length}`;
-    pageEl.appendChild(label);
     return pageEl;
   }
 
   // ------------------------------------------------- trechos de texto do PDF
-  function buildTextEl(page, el) {
+  function renderOrig(key) {
+    const { page, el, node } = origs.get(key);
+    const entry = edits.get(key);
+    const fmt = (entry && entry.fmt) || baseFmt(el);
+    if (!node.isContentEditable) node.textContent = entry ? entry.text : el.text;
+    applyFontStyle(node, page, fmt);
+    const changed = Boolean(entry) && isChanged(key, entry);
+    node.classList.toggle('edited', changed);
+    node.classList.toggle('deleted', changed && entry.text === '');
+    if (entry && !changed) edits.delete(key);
+  }
+
+  function buildOrig(page, el) {
     const node = document.createElement('div');
     node.className = 'ed-text';
     const [x0, y0, x1, y1] = el.bbox;
     place(node, page, x0, y0, x1, y1);
     // Ao editar, o fundo branco cobre no mínimo a largura do texto original
     node.style.setProperty('--w', node.style.width);
-    node.style.fontSize = fontSizeCss(page, el.size);
-    node.style.fontFamily = familyOf(el.font);
-    node.style.setProperty('--c', rgbCss(el.color));
-    if (el.flags & 16) node.style.fontWeight = 'bold';
-    if (el.flags & 2) node.style.fontStyle = 'italic';
     node.textContent = el.text;
     node.spellcheck = false;
     const key = `${page}:${el.id}`;
+    origs.set(key, { page, el, node });
+    applyFontStyle(node, page, baseFmt(el));
+    let before = null;
 
     node.addEventListener('click', (e) => {
       if (mode !== 'select') return;
       e.stopPropagation();
+      select(null);
+      setTarget({ kind: 'orig', key });
       if (node.isContentEditable) return;
+      const current = edits.get(key);
+      before = current ? { text: current.text, fmt: current.fmt && { ...current.fmt } } : null;
       node.contentEditable = 'plaintext-only';
       if (node.contentEditable !== 'plaintext-only') node.contentEditable = 'true';
       node.classList.add('editing');
@@ -227,6 +486,7 @@
         node.textContent = current ? current.text : el.text;
         node.blur();
       }
+      formatShortcut(e);
     });
     node.addEventListener('paste', (e) => {
       e.preventDefault();
@@ -236,17 +496,24 @@
       node.contentEditable = 'false';
       node.classList.remove('editing');
       const text = node.textContent.replace(/\s+/g, ' ').trim();
-      const prev = edits.get(key);
-      const prevText = prev ? prev.text : el.text;
-      if (text === prevText) return;
-      history.push({ kind: 'edit', key, node, prevText, hadPrev: Boolean(prev) });
-      if (text === el.text) edits.delete(key);
-      else edits.set(key, { page, el, text });
-      node.classList.toggle('edited', edits.has(key));
-      node.classList.toggle('deleted', edits.has(key) && text === '');
+      const current = edits.get(key);
+      const prevText = current ? current.text : el.text;
+      if (text !== prevText) {
+        history.push({ kind: 'orig', key, prev: before });
+        edits.set(key, { text, fmt: current ? current.fmt : null });
+      }
+      renderOrig(key);
       refreshState();
     });
     return node;
+  }
+
+  function formatShortcut(e) {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    const k = e.key.toLowerCase();
+    if (k === 'b' || k === 'n') { e.preventDefault(); edBold.click(); }
+    if (k === 'i') { e.preventDefault(); edItalic.click(); }
+    if (k === 'u') { e.preventDefault(); edUnderline.click(); }
   }
 
   // ------------------------------------------------- campos de formulário
@@ -287,18 +554,19 @@
   }
 
   // ------------------------------------------------- objetos criados
+  const layerOf = (page) => edPages.querySelector(`.ed-page[data-page="${page}"] .ed-layer`);
+
   function addObject(obj, { focus = false } = {}) {
     obj.uid = ++uidSeq;
-    const layer = edPages.querySelector(`.ed-page[data-page="${obj.page}"] .ed-layer`);
+    const layer = layerOf(obj.page);
     const node = document.createElement('div');
     node.className = `ed-obj ed-obj-${obj.type}`;
     obj.node = node;
 
     if (obj.type === 'addText') {
       node.textContent = obj.text || '';
-      node.style.fontSize = fontSizeCss(obj.page, obj.size);
+      applyFontStyle(node, obj.page, obj);
       node.style.color = obj.color;
-      node.style.fontWeight = obj.bold ? 'bold' : 'normal';
       node.style.left = pct(obj.x, pagesMeta[obj.page].width);
       node.style.top = pct(obj.y, pagesMeta[obj.page].height);
       node.spellcheck = false;
@@ -308,7 +576,10 @@
         if (!obj.text.trim()) removeObject(obj, { record: false });
         refreshState();
       });
-      node.addEventListener('keydown', (e) => { if (e.key === 'Escape') node.blur(); });
+      node.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') node.blur();
+        formatShortcut(e);
+      });
     } else {
       syncRect(obj);
       if (obj.type === 'image') {
@@ -322,18 +593,16 @@
       } else if (obj.type === 'highlight') {
         node.style.background = obj.color;
       }
-      if (obj.type === 'image' || obj.type === 'rect' || obj.type === 'highlight' || obj.type === 'whiteout' || obj.type === 'redact') {
-        const handle = document.createElement('span');
-        handle.className = 'ed-handle';
-        node.appendChild(handle);
-      }
+      const handle = document.createElement('span');
+      handle.className = 'ed-handle';
+      node.appendChild(handle);
     }
     attachObjectDrag(obj, layer);
     layer.appendChild(node);
     objects.push(obj);
     history.push({ kind: 'add', obj });
-    if (focus && obj.type === 'addText') startTextEditing(obj);
     select(obj);
+    if (focus && obj.type === 'addText') startTextEditing(obj);
     refreshState();
     return obj;
   }
@@ -363,13 +632,14 @@
     obj.node.remove();
     if (record) history.push({ kind: 'remove', obj, index: i });
     if (selected === obj) select(null);
+    if (target && target.obj === obj) setTarget(null);
     refreshState();
   }
 
   function attachObjectDrag(obj, layer) {
     const node = obj.node;
     node.addEventListener('pointerdown', (e) => {
-      if (node.isContentEditable) return; // selecionando texto dentro dele
+      if (node.isContentEditable) return;
       e.stopPropagation();
       e.preventDefault();
       select(obj);
@@ -391,7 +661,7 @@
           node.style.left = pct(obj.x, pagesMeta[obj.page].width);
           node.style.top = pct(obj.y, pagesMeta[obj.page].height);
         } else if (resizing) {
-          let x1 = Math.max(orig[0] + 4, orig[2] + dx);
+          const x1 = Math.max(orig[0] + 4, orig[2] + dx);
           let y1 = Math.max(orig[1] + 4, orig[3] + dy);
           if (obj.type === 'image' && obj.ratio) y1 = orig[1] + (x1 - orig[0]) / obj.ratio;
           obj.rect = [orig[0], orig[1], x1, y1];
@@ -424,12 +694,13 @@
 
       if (mode === 'select') {
         select(null);
+        setTarget(null);
         return;
       }
       if (mode === 'text') {
         e.preventDefault();
-        const size = Number(edSize.value) || 12;
-        addObject({ type: 'addText', page, x: p.x, y: p.y - size * 0.6, text: '', size, color: edColor.value, bold: edBold.checked }, { focus: true });
+        addObject({ type: 'addText', page, x: p.x, y: p.y - defaults.size * 0.6, text: '', ...defaults }, { focus: true });
+        setMode('select');
         return;
       }
       if (mode === 'place' && pendingImage) {
@@ -443,8 +714,9 @@
       }
       if (['highlight', 'rect', 'whiteout', 'redact'].includes(mode)) {
         e.preventDefault();
+        const kind = mode;
         const ghost = document.createElement('div');
-        ghost.className = `ed-obj ed-obj-${mode} ed-ghost`;
+        ghost.className = `ed-obj ed-obj-${kind} ed-ghost`;
         layer.appendChild(ghost);
         layer.setPointerCapture(e.pointerId);
         let end = p;
@@ -457,9 +729,8 @@
           ghost.remove();
           const rect = [Math.min(p.x, end.x), Math.min(p.y, end.y), Math.max(p.x, end.x), Math.max(p.y, end.y)];
           if (rect[2] - rect[0] < 3 || rect[3] - rect[1] < 3) return;
-          const color = mode === 'highlight' ? (edColor.value === '#000000' ? '#ffeb33' : edColor.value)
-            : mode === 'rect' ? (edColor.value === '#000000' ? '#cc0000' : edColor.value) : null;
-          addObject({ type: mode, page, rect, color, width: 2 });
+          const color = kind === 'highlight' ? '#ffeb33' : kind === 'rect' ? (defaults.color === '#000000' ? '#cc0000' : defaults.color) : null;
+          addObject({ type: kind, page, rect, color, width: 2 });
         };
         layer.addEventListener('pointermove', onMove);
         layer.addEventListener('pointerup', onUp);
@@ -499,7 +770,6 @@
     }
   });
 
-  // Canvas da assinatura
   const ctx = signCanvas.getContext('2d');
   let drawing = false;
   let signDirty = false;
@@ -518,7 +788,7 @@
     ctx.lineWidth = 3.2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.strokeStyle = edColor.value === '#000000' ? '#0b1f6b' : edColor.value;
+    ctx.strokeStyle = defaults.color === '#000000' ? '#0b1f6b' : defaults.color;
     ctx.beginPath();
     ctx.moveTo(...canvasPoint(e));
   });
@@ -536,7 +806,6 @@
       showError('Rabisca alguma coisa antes, né.');
       return;
     }
-    // Recorta o espaço vazio em volta do rabisco
     const { width, height } = signCanvas;
     const px = ctx.getImageData(0, 0, width, height).data;
     let minX = width; let minY = height; let maxX = 0; let maxY = 0;
@@ -562,7 +831,7 @@
     setMode('place');
   });
 
-  // ------------------------------------------------- barra de ferramentas
+  // ------------------------------------------------- modos, desfazer, apagar
   document.querySelectorAll('.ed-mode').forEach((btn) => btn.addEventListener('click', () => {
     const m = btn.dataset.mode;
     if (m === 'sign') {
@@ -588,8 +857,7 @@
     if (last.kind === 'add') {
       removeObject(last.obj, { record: false });
     } else if (last.kind === 'remove') {
-      const layer = edPages.querySelector(`.ed-page[data-page="${last.obj.page}"] .ed-layer`);
-      layer.appendChild(last.obj.node);
+      layerOf(last.obj.page).appendChild(last.obj.node);
       objects.splice(last.index, 0, last.obj);
     } else if (last.kind === 'move') {
       if (last.obj.type === 'addText') {
@@ -600,21 +868,29 @@
         last.obj.rect = last.prev;
         syncRect(last.obj);
       }
-    } else if (last.kind === 'edit') {
-      const current = edits.get(last.key);
-      const el = current ? current.el : null;
-      if (last.hadPrev && el) edits.set(last.key, { ...current, text: last.prevText });
+    } else if (last.kind === 'objFormat') {
+      Object.assign(last.obj, last.prev);
+      applyFontStyle(last.obj.node, last.obj.page, last.obj);
+      last.obj.node.style.color = last.obj.color;
+    } else if (last.kind === 'orig') {
+      if (last.prev) edits.set(last.key, last.prev);
       else edits.delete(last.key);
-      last.node.textContent = last.prevText;
-      last.node.classList.toggle('edited', edits.has(last.key));
-      last.node.classList.toggle('deleted', edits.has(last.key) && last.prevText === '');
+      const { node, el } = origs.get(last.key);
+      node.textContent = last.prev ? last.prev.text : el.text;
+      renderOrig(last.key);
     }
+    reflectRibbon();
     refreshState();
   });
 
   document.addEventListener('keydown', (e) => {
-    if (!session || document.getElementById('tab-editor').classList.contains('hidden')) return;
+    if (!session || $('tab-editor').classList.contains('hidden')) return;
     const typing = e.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      if (!edSaveBtn.disabled) edSaveBtn.click();
+      return;
+    }
     if (typing) return;
     if ((e.key === 'Delete' || e.key === 'Backspace') && selected) {
       e.preventDefault();
@@ -622,30 +898,32 @@
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
       e.preventDefault();
       edUndo.click();
+    } else {
+      formatShortcut(e);
     }
   });
-
-  // Mudar cor/tamanho/negrito afeta o texto novo selecionado
-  [edColor, edSize, edBold].forEach((input) => input.addEventListener('change', () => {
-    if (!selected || selected.type !== 'addText') return;
-    selected.color = edColor.value;
-    selected.size = Number(edSize.value) || 12;
-    selected.bold = edBold.checked;
-    selected.node.style.color = selected.color;
-    selected.node.style.fontSize = fontSizeCss(selected.page, selected.size);
-    selected.node.style.fontWeight = selected.bold ? 'bold' : 'normal';
-  }));
 
   // ------------------------------------------------- salvar
   function buildOps() {
     const ops = [];
-    edits.forEach(({ page, el, text }) => {
-      if (text === el.text) return;
-      ops.push({ type: 'edit', page, bbox: el.bbox, origin: el.origin, text, font: el.font, size: el.size, color: el.color, flags: el.flags });
+    edits.forEach((entry, key) => {
+      if (!isChanged(key, entry)) return;
+      const { page, el } = origs.get(key);
+      const op = { type: 'edit', page, bbox: el.bbox, origin: el.origin, text: entry.text, font: el.font, size: el.size, color: el.color, flags: el.flags };
+      if (entry.fmt) {
+        Object.assign(op, {
+          fontKey: entry.fmt.fontKey, size: entry.fmt.size, color: entry.fmt.color,
+          bold: entry.fmt.bold, italic: entry.fmt.italic, underline: entry.fmt.underline
+        });
+      }
+      ops.push(op);
     });
     objects.forEach((o) => {
       if (o.type === 'addText') {
-        if (o.text && o.text.trim()) ops.push({ type: 'addText', page: o.page, x: o.x, y: o.y, text: o.text, size: o.size, color: o.color, bold: o.bold, family: 'sans' });
+        if (o.text && o.text.trim()) {
+          ops.push({ type: 'addText', page: o.page, x: o.x, y: o.y, text: o.text, size: o.size, color: o.color,
+            fontKey: o.fontKey, bold: o.bold, italic: o.italic, underline: o.underline });
+        }
       } else if (o.type === 'image') {
         ops.push({ type: 'image', page: o.page, rect: o.rect, data: o.data });
       } else {
@@ -672,7 +950,7 @@
       let data = null;
       try { data = await res.json(); } catch (_) { data = null; }
       if (!res.ok || !data) {
-        if (res.status === 404) throw new Error((data && data.error) || 'Sessão expirou. Abra o PDF de novo (suas edições na tela continuam, mas o servidor esqueceu o arquivo).');
+        if (res.status === 404) throw new Error((data && data.error) || 'Sessão expirou. Abra o PDF de novo.');
         throw new Error((data && data.error) || `Erro no servidor (${res.status}).`);
       }
       const s = data.stats || {};
@@ -684,15 +962,15 @@
       if (s.redacted) parts.push(`Tarjas: <strong>${s.redacted}</strong>`);
       if (s.fields) parts.push(`Campos preenchidos: <strong>${s.fields}</strong>`);
       const fallback = s.fallbackFonts
-        ? `<br><em>${s.fallbackFonts} trecho(s) usaram fonte parecida (a original não tinha todas as letras). Confere se ficou aceitável.</em>`
+        ? `<br><em>${s.fallbackFonts} trecho(s) usaram fonte parecida (a original não tinha todas as letras).</em>`
         : '';
+      resultEl.classList.add('ed-result-floating');
       await showResult({
         info: `${parts.join('<br>')}${fallback}<br>Tamanho: <strong>${formatBytes(data.size)}</strong><br><em>Pode continuar editando e salvar de novo.</em>`,
         label: 'BAIXAR PDF ADULTERADO',
         id: data.id,
         outName: data.originalName
       });
-      resultEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } catch (err) {
       stopLoading(false);
       showError(err.message);
@@ -713,9 +991,11 @@
   $('edCloseBtn').addEventListener('click', () => {
     if (changeCount() && !window.confirm('Largar esse PDF? As alterações não salvas vão pro lixo.')) return;
     resetState();
+    setWide(false);
     edWorkspace.classList.add('hidden');
     edDropzone.classList.remove('hidden');
     resultEl.classList.add('hidden');
+    resultEl.classList.remove('ed-result-floating');
   });
 
   window.addEventListener('beforeunload', (e) => {

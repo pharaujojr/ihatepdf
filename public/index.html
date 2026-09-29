@@ -414,39 +414,112 @@
         </div>
       </section>
 
-      <div id="edWorkspace" class="hidden">
-        <div class="ed-toolbar" id="edToolbar" role="toolbar" aria-label="Ferramentas do editor">
-          <div class="ed-modes">
-            <button type="button" class="ed-mode active" data-mode="select" title="Clique num texto do PDF para editar">Editar texto</button>
-            <button type="button" class="ed-mode" data-mode="text" title="Clique na página para escrever">Texto novo</button>
-            <button type="button" class="ed-mode" data-mode="sign" title="Desenhe ou envie sua assinatura">Assinatura</button>
-            <button type="button" class="ed-mode" data-mode="image" title="Insira uma imagem ou carimbo">Imagem</button>
-            <button type="button" class="ed-mode" data-mode="highlight" title="Arraste para marcar">Marca-texto</button>
-            <button type="button" class="ed-mode" data-mode="rect" title="Arraste para desenhar">Retângulo</button>
-            <button type="button" class="ed-mode" data-mode="whiteout" title="Arraste para cobrir de branco">Corretivo</button>
-            <button type="button" class="ed-mode" data-mode="redact" title="Arraste para apagar de verdade">Tarja</button>
+      <div id="edWorkspace" class="word-app hidden">
+        <div class="word-titlebar">
+          <span class="word-doc-icon">PDF</span>
+          <span id="edDocName" class="word-doc-name">documento.pdf</span>
+          <span class="word-test">TESTE</span>
+          <span class="spacer"></span>
+          <button type="button" id="edSaveBtn" class="word-save" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h11l3 3v15H5zM8 3v6h8V3M8 21v-7h8v7"/></svg>Salvar PDF</button>
+          <button type="button" id="edCloseBtn" class="word-close">Fechar</button>
+        </div>
+
+        <div class="word-tabs" role="tablist">
+          <button type="button" class="word-tab active" data-rtab="home" role="tab">Página Inicial</button>
+          <button type="button" class="word-tab" data-rtab="insert" role="tab">Inserir</button>
+          <button type="button" class="word-tab" data-rtab="mark" role="tab">Marcar</button>
+          <button type="button" class="word-tab" data-rtab="view" role="tab">Exibir</button>
+        </div>
+
+        <div class="word-ribbon" id="edToolbar" role="toolbar" aria-label="Faixa de opções">
+          <div class="rgroup" data-rtab="home">
+            <div class="rgroup-body">
+              <button type="button" class="rbtn big ed-mode active" data-mode="select" title="Clique num texto do PDF para editar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></svg><span>Editar<br>texto</span></button>
+            </div>
+            <span class="rgroup-label">Edição</span>
           </div>
-          <div class="ed-props">
-            <label>Cor <input type="color" id="edColor" value="#000000" /></label>
-            <label>Tamanho <input type="number" id="edSize" value="12" min="4" max="200" inputmode="decimal" /></label>
-            <label class="ed-bold"><input type="checkbox" id="edBold" /> Negrito</label>
-            <button type="button" id="edDelete" class="ed-action" disabled>Apagar selecionado</button>
-            <button type="button" id="edUndo" class="ed-action" disabled>Desfazer</button>
+
+          <div class="rgroup" data-rtab="home">
+            <div class="rgroup-body font-group">
+              <div class="font-row">
+                <div class="font-picker" id="edFontPicker">
+                  <button type="button" id="edFontBtn" class="font-btn" aria-haspopup="listbox" aria-expanded="false">Arial (Liberation Sans)</button>
+                  <div id="edFontMenu" class="font-menu hidden" role="listbox"></div>
+                </div>
+                <input type="text" id="edSize" class="size-input" value="12" list="edSizes" inputmode="decimal" aria-label="Tamanho da fonte" />
+                <datalist id="edSizes">
+                  <option value="8"></option><option value="9"></option><option value="10"></option><option value="11"></option>
+                  <option value="12"></option><option value="14"></option><option value="16"></option><option value="18"></option>
+                  <option value="20"></option><option value="24"></option><option value="28"></option><option value="36"></option>
+                  <option value="48"></option><option value="72"></option>
+                </datalist>
+                <button type="button" class="rbtn fmt" id="edGrow" title="Aumentar fonte">A<sup>+</sup></button>
+                <button type="button" class="rbtn fmt" id="edShrink" title="Diminuir fonte">A<sup>−</sup></button>
+              </div>
+              <div class="font-row">
+                <button type="button" class="rbtn fmt" id="edBold" aria-pressed="false" title="Negrito (Ctrl+B)"><b>N</b></button>
+                <button type="button" class="rbtn fmt" id="edItalic" aria-pressed="false" title="Itálico (Ctrl+I)"><i>I</i></button>
+                <button type="button" class="rbtn fmt" id="edUnderline" aria-pressed="false" title="Sublinhado (Ctrl+U)"><u>S</u></button>
+                <label class="rbtn fmt color-btn" title="Cor da fonte">
+                  <span class="color-a">A</span><span class="color-bar" id="edColorBar"></span>
+                  <input type="color" id="edColor" value="#000000" />
+                </label>
+              </div>
+            </div>
+            <span class="rgroup-label">Fonte</span>
+          </div>
+
+          <div class="rgroup" data-rtab="home">
+            <div class="rgroup-body">
+              <button type="button" class="rbtn" id="edUndo" disabled title="Desfazer (Ctrl+Z)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14L4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3"/></svg><span>Desfazer</span></button>
+              <button type="button" class="rbtn" id="edDelete" disabled title="Apagar selecionado (Delete)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg><span>Apagar</span></button>
+            </div>
+            <span class="rgroup-label">Alterações</span>
+          </div>
+
+          <div class="rgroup" data-rtab="insert">
+            <div class="rgroup-body">
+              <button type="button" class="rbtn big ed-mode" data-mode="text" title="Clique na página para escrever"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M12 5v14M9 19h6"/></svg><span>Caixa de<br>texto</span></button>
+              <button type="button" class="rbtn big ed-mode" data-mode="image" title="Imagem ou carimbo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8 10a1.5 1.5 0 1 0 0-.1M5 18l5-6 4 4 2-2 3 4"/></svg><span>Imagem</span></button>
+              <button type="button" class="rbtn big ed-mode" data-mode="sign" title="Desenhe ou envie sua assinatura"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17c3-6 5-9 7-9s-1 8 1 8 3-5 5-5 1 4 3 4M3 21h18"/></svg><span>Assinatura</span></button>
+            </div>
+            <span class="rgroup-label">Inserir</span>
+          </div>
+
+          <div class="rgroup" data-rtab="mark">
+            <div class="rgroup-body">
+              <button type="button" class="rbtn big ed-mode" data-mode="highlight"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 15l-4 4h6l1-1M9 15l7-10 4 3-7 10zM9 15l4 3"/></svg><span>Marca-<br>texto</span></button>
+              <button type="button" class="rbtn big ed-mode" data-mode="rect"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4z"/></svg><span>Retângulo</span></button>
+              <button type="button" class="rbtn big ed-mode" data-mode="whiteout"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4zM8 10h8M8 14h5"/></svg><span>Corretivo</span></button>
+              <button type="button" class="rbtn big ed-mode" data-mode="redact"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h16v6H4z"/></svg><span>Tarja<br>preta</span></button>
+            </div>
+            <span class="rgroup-label">Marcar</span>
+          </div>
+
+          <div class="rgroup" data-rtab="view">
+            <div class="rgroup-body">
+              <button type="button" class="rbtn big" id="edFitWidth"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4"/></svg><span>Largura<br>da tela</span></button>
+              <button type="button" class="rbtn big" id="edFitPage"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v18H7zM12 7v10M9 10l3-3 3 3M9 14l3 3 3-3"/></svg><span>Página<br>inteira</span></button>
+              <button type="button" class="rbtn big" id="edZoom100"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4M8 11h6"/></svg><span>100%</span></button>
+            </div>
+            <span class="rgroup-label">Zoom</span>
           </div>
         </div>
-        <p id="edHint" class="hint ed-hint"></p>
-        <div id="edPages" class="ed-pages"></div>
 
-        <div class="ed-footer">
-          <label class="check-row" id="edFlattenRow">
-            <input type="checkbox" id="edFlatten" />
-            <span>Achatar os formulários depois de preencher (ninguém mais muda)</span>
-          </label>
-          <button id="edSaveBtn" class="primary-btn btn-compress" disabled>
-            <span class="btn-label">SALVAR A ADULTERAÇÃO</span>
-            <span class="btn-sub" id="edSaveSub">Nenhuma alteração ainda</span>
-          </button>
-          <button type="button" id="edCloseBtn" class="link-btn">Largar esse PDF e abrir outro</button>
+        <div class="word-canvas" id="edCanvas">
+          <div id="edPages" class="ed-pages"></div>
+        </div>
+
+        <div class="word-status">
+          <span id="edStatusPage">Página 1 de 1</span>
+          <span id="edSaveSub">Nenhuma alteração ainda</span>
+          <span id="edHint" class="ed-hint"></span>
+          <span class="spacer"></span>
+          <label class="status-check" id="edFlattenRow"><input type="checkbox" id="edFlatten" /> Achatar formulários</label>
+          <button type="button" class="zoom-btn" id="edZoomOut" title="Diminuir zoom">−</button>
+          <input type="range" id="edZoomRange" min="40" max="250" step="10" value="100" aria-label="Zoom" />
+          <button type="button" class="zoom-btn" id="edZoomIn" title="Aumentar zoom">+</button>
+          <span id="edZoomLabel" class="zoom-label">100%</span>
         </div>
       </div>
 
@@ -462,6 +535,19 @@
           <button type="button" id="edSignOk" class="ed-action primary">Usar</button>
         </div>
       </dialog>
+    </div>
+
+    <div id="tab-fonts" class="tab-pane hidden">
+      <section class="compression-section">
+        <h2>Fontes</h2>
+        <p class="hint tool-desc">Coleção de fontes livres (OFL/Apache), servidas daqui mesmo, sem CDN. As "Padrão" são irmãs gêmeas grátis das do Office: mesmas medidas, zero licença da Microsoft. Todas podem ser usadas no Editor ou baixadas pra instalar no seu PC.</p>
+        <div class="fonts-controls">
+          <input type="text" id="fontsSample" class="text-input" value="Odeio PDF com todas as minhas forças — Ação, Coração, 1234" aria-label="Texto de exemplo" />
+          <label class="fonts-size">Tamanho <input type="range" id="fontsSize" min="12" max="72" value="30" /></label>
+        </div>
+        <div id="fontsFilters" class="fonts-filters" role="group" aria-label="Categorias"></div>
+      </section>
+      <div id="fontsGrid" class="fonts-grid"></div>
     </div>
 
     <div id="tab-tools" class="tab-pane hidden">
@@ -521,6 +607,7 @@
     <p>I HATE PDF &copy; 2026 - Feito com ódio aos PDFs! E também todo o resto.</p>
   </footer>
 
+  <script src="fonts.js"></script>
   <script src="app.js"></script>
   <script src="editor.js"></script>
 </body>

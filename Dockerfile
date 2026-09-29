@@ -24,6 +24,8 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
       libglib2.0-0 \
       fonts-dejavu \
       fonts-liberation \
+      fonts-crosextra-carlito \
+      fonts-crosextra-caladea \
   && pip install --no-cache-dir --break-system-packages pdf2docx langdetect pikepdf openpyxl \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
@@ -42,6 +44,15 @@ RUN npm ci --omit=dev
 COPY server.js ./
 COPY public ./public
 COPY tools ./tools
+
+# Fontes "padrão" do editor (Liberation = Arial/Times/Courier, Carlito = Calibri,
+# Caladea = Cambria, DejaVu) servidas pelo próprio app — nada de CDN
+RUN mkdir -p public/fonts/sys \
+  && cp /usr/share/fonts/truetype/liberation/Liberation*.ttf \
+        /usr/share/fonts/truetype/crosextra/*.ttf \
+        /usr/share/fonts/truetype/dejavu/DejaVuSans*.ttf \
+        /usr/share/fonts/truetype/dejavu/DejaVuSerif*.ttf \
+        public/fonts/sys/
 
 # Roda sem root: só as pastas de trabalho são graváveis
 RUN mkdir -p uploads outputs work editor && chown -R node:node uploads outputs work editor

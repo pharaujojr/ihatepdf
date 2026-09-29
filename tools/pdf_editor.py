@@ -31,8 +31,10 @@ import sys
 import pymupdf as fitz
 
 MAX_PAGES = 150
-RENDER_ZOOM = 1.5  # 108 dpi: nítido na tela sem pesar
+RENDER_ZOOM = 2.0  # 144 dpi: nítido até ~150% de zoom
 FONT_DIR = '/usr/share/fonts/truetype/liberation'
+FONTS_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'public', 'fonts')
+DEFAULT_FONT = 'liberation-sans'
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
 
 
@@ -56,6 +58,57 @@ def color01(value, default=(0, 0, 0)):
 
 def clean_font_name(name):
     return re.sub(r'^[A-Z]{6}\+', '', name or '')
+
+
+def load_catalog():
+    try:
+        with open(os.path.join(FONTS_ROOT, 'catalog.json'), encoding='utf-8') as fh:
+            return {f['key']: f for f in json.load(fh)['fonts']}
+    except (OSError, ValueError):
+        return {}
+
+
+CATALOG = load_catalog()
+
+
+def style_flags(name, flags):
+    low = (name or '').lower()
+    bold = bool(flags & 16) or any(w in low for w in ('bold', 'black', 'heavy', 'semibold'))
+    italic = bool(flags & 2) or 'italic' in low or 'oblique' in low
+    return bold, italic
+
+
+def guess_font_key(name, flags=0):
+    """Fonte do catálogo mais parecida com a do PDF (pelo nome ou pelo tipo)."""
+    norm = re.sub(r'[^a-z]', '', (name or '').lower())
+    norm = re.sub(r'(bold|italic|oblique|regular|black|semibold|light|medium|psmt|mt|ps)', '', norm)
+    best, best_len = None, 0
+    for key, font in CATALOG.items():
+        for alias in font.get('aliases', []):
+            if alias and alias in norm and len(alias) > best_len:
+                best, best_len = key, len(alias)
+    if best:
+        return best
+    low = (name or '').lower()
+    if 'mono' in low or 'courier' in low or flags & 8:
+        return 'liberation-mono'
+    if ('serif' in low and 'sans' not in low) or (flags & 4 and 'sans' not in low):
+        return 'liberation-serif'
+    return DEFAULT_FONT
+
+
+def font_file(key, bold=False, italic=False):
+    """Arquivo TTF do catálogo para o estilo pedido (cai para o mais próximo)."""
+    font = CATALOG.get(key) or CATALOG.get(DEFAULT_FONT)
+    if font:
+        files = font['files']
+        wanted = ('bolditalic' if bold and italic else 'bold' if bold else 'italic' if italic else 'regular')
+        for style in (wanted, 'bold' if bold else 'italic', 'regular'):
+            rel = files.get(style)
+            if rel and os.path.exists(os.path.join(FONTS_ROOT, rel)):
+                return os.path.join(FONTS_ROOT, rel)
+    style = 'BoldItalic' if bold and italic else 'Bold' if bold else 'Italic' if italic else 'Regular'
+    return os.path.join(FONT_DIR, 'LiberationSans-{0}.ttf'.format(style))
 
 
 # --------------------------------------------------------------------------
@@ -101,6 +154,9 @@ def page_elements(page):
                     'size': round(first['size'], 2),
                     'color': rgb_int(first['color']),
                     'flags': first['flags'],
+                    'fontKey': guess_font_key(first['font'], first['flags']),
+                    'bold': style_flags(first['font'], first['flags'])[0],
+                    'italic': style_flags(first['font'], first['flags'])[1],
                 })
     return elements
 
@@ -178,24 +234,6 @@ class FontPicker:
                             self._used.setdefault(clean_font_name(span['font']), set()).update(span['text'])
         return self._used.get(name, set())
 
-    def fallback_file(self, name, flags, bold=None, italic=None):
-        low = (name or '').lower()
-        if bold is None:
-            bold = bool(flags & 16) or 'bold' in low or 'black' in low or 'heavy' in low
-        if italic is None:
-            italic = bool(flags & 2) or 'italic' in low or 'oblique' in low
-        if 'mono' in low or 'courier' in low or 'consol' in low or flags & 8:
-            family = 'Mono'
-        elif 'times' in low or 'serif' in low and 'sans' not in low or 'georgia' in low \
-                or 'garamond' in low or 'cambria' in low or (flags & 4 and 'sans' not in low):
-            family = 'Serif'
-        elif 'narrow' in low or 'condensed' in low:
-            family = 'SansNarrow'
-        else:
-            family = 'Sans'
-        style = 'BoldItalic' if bold and italic else 'Bold' if bold else 'Italic' if italic else 'Regular'
-        return os.path.join(FONT_DIR, 'Liberation{0}-{1}.ttf'.format(family, style))
-
     def embedded_font(self, page, name):
         key = (page.number, name)
         if key in self.embedded:
@@ -216,28 +254,39 @@ class FontPicker:
         self.embedded[key] = found
         return found
 
+    @staticmethod
+    def file_kwargs(path):
+        alias = 'F' + re.sub(r'[^A-Za-z0-9]', '', os.path.basename(path).replace('.ttf', ''))[:40]
+        return {'fontname': alias, 'fontfile': path}
+
     def for_text(self, page, text, name, flags):
-        """Retorna kwargs de insert_text: fontname (+ fontfile/fontbuffer)."""
+        """Retorna (kwargs de insert_text, caminho do TTF ou None, usou_reserva)."""
         emb = self.embedded_font(page, name) if name else None
         letters = {c for c in text if not c.isspace()}
         ok = emb and all(emb[1].has_glyph(ord(c)) for c in letters)
         if ok and emb[3]:
             ok = letters <= self.used_chars(name)
         if ok:
-            alias, _font, buffer, _subset = emb
+            alias, font, buffer, _subset = emb
             if (page.number, alias) not in self.registered:
                 page.insert_font(fontname=alias, fontbuffer=buffer)
                 self.registered.add((page.number, alias))
-            return {'fontname': alias}, False
-        path = self.fallback_file(name, flags)
-        alias = 'LB' + re.sub(r'[^A-Za-z]', '', os.path.basename(path).replace('.ttf', ''))
-        return {'fontname': alias, 'fontfile': path}, True
+            return {'fontname': alias}, font, False
+        bold, italic = style_flags(name, flags)
+        path = font_file(guess_font_key(name, flags), bold, italic)
+        return self.file_kwargs(path), fitz.Font(fontfile=path), True
 
-    def by_family(self, family, bold, italic):
-        name = {'serif': 'Times', 'mono': 'Courier'}.get(family, 'Arial')
-        path = self.fallback_file(name, 0, bold=bold, italic=italic)
-        alias = 'LB' + re.sub(r'[^A-Za-z]', '', os.path.basename(path).replace('.ttf', ''))
-        return {'fontname': alias, 'fontfile': path}
+    def chosen(self, key, bold, italic):
+        path = font_file(key, bold, italic)
+        return self.file_kwargs(path), fitz.Font(fontfile=path)
+
+
+def underline(page, origin, text, font, size, color):
+    """Sublinhado estilo Word: linha logo abaixo da linha de base."""
+    width = font.text_length(text, fontsize=size)
+    y = origin.y + size * 0.12
+    page.draw_line(fitz.Point(origin.x, y), fitz.Point(origin.x + width, y),
+                   color=color, width=max(0.4, size * 0.06), overlay=True)
 
 
 def rect_of(op):
@@ -312,22 +361,35 @@ def cmd_apply(src, ops_path, dst):
             if kind == 'edit':
                 text = str(op.get('text', ''))[:2000]
                 if text.strip():
-                    kwargs, fallback = fonts.for_text(page, text, op.get('font'), int(op.get('flags') or 0))
+                    size = max(2.0, min(300.0, float(op.get('size') or 11)))
+                    color = color01(op.get('color'))
+                    if op.get('fontKey'):
+                        # Usuário escolheu fonte/estilo na faixa de opções
+                        kwargs, font = fonts.chosen(op['fontKey'], bool(op.get('bold')), bool(op.get('italic')))
+                        fallback = False
+                    else:
+                        kwargs, font, fallback = fonts.for_text(page, text, op.get('font'), int(op.get('flags') or 0))
                     origin = op.get('origin') or [rect_of(op).x0, rect_of(op).y1]
-                    page.insert_text(fitz.Point(float(origin[0]), float(origin[1])), text,
-                                     fontsize=float(op.get('size') or 11),
-                                     color=color01(op.get('color')), **kwargs)
+                    point = fitz.Point(float(origin[0]), float(origin[1]))
+                    page.insert_text(point, text, fontsize=size, color=color, **kwargs)
+                    if op.get('underline'):
+                        underline(page, point, text, font, size, color)
                     stats['fallbackFonts'] += int(fallback)
                 stats['edited'] += 1
             elif kind == 'addText':
                 text = str(op.get('text', ''))[:5000]
                 if not text.strip():
                     continue
-                size = max(4.0, min(200.0, float(op.get('size') or 12)))
-                kwargs = fonts.by_family(op.get('family'), bool(op.get('bold')), bool(op.get('italic')))
+                size = max(4.0, min(300.0, float(op.get('size') or 12)))
+                color = color01(op.get('color'))
+                kwargs, font = fonts.chosen(op.get('fontKey') or DEFAULT_FONT, bool(op.get('bold')), bool(op.get('italic')))
                 x, y = float(op.get('x', 0)), float(op.get('y', 0))
-                page.insert_text(fitz.Point(x, y + size * 0.88), text, fontsize=size,
-                                 lineheight=1.2, color=color01(op.get('color')), **kwargs)
+                for i, line in enumerate(text.split('\n')):
+                    point = fitz.Point(x, y + size * 0.88 + i * size * 1.2)
+                    if line:
+                        page.insert_text(point, line, fontsize=size, color=color, **kwargs)
+                        if op.get('underline'):
+                            underline(page, point, line, font, size, color)
                 stats['added'] += 1
             elif kind == 'image':
                 page.insert_image(rect_of(op), stream=decode_image(op.get('data')), keep_proportion=False)
