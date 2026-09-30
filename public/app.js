@@ -27,100 +27,50 @@ let draggedMergeIndex = null;
 let loadingProgressTimer = null;
 
 const COMPRESS_PHRASES = [
-  'Espreme até o talo',
-  'Sem dó, sem piedade',
-  'Esmaga essa bodega',
-  'Arrocha no encolhimento',
-  'Meu e-mail não é GugoDraive'
+  'O anexo precisa caber. A raiva, não.',
+  '48 MB para dizer “segue em anexo”.',
+  'Seu PDF estava ocupando um latifúndio.',
+  'Porque o portal ainda vive em 2006.'
 ];
-
 const MERGE_PHRASES = [
-  'Mistura, mistura, mistura...',
-  'Forje-os no ódio',
-  'Junta esses trem',
-  'Não precisa tá perto pra tá junto...s2',
-  'Bate com limão e gelo'
+  'Uma reunião que finalmente junta alguma coisa.',
+  'Anexo do anexo? Hoje não.',
+  'Agora o caos tem um único endereço.'
 ];
-
 const WORD_PHRASES = [
-  'Troca esse trem na base do Ódio',
-  'Vira a casaca do arquivo',
-  'De cá pra lá, de lá pra cá',
-  'Troca de figurino',
-  'Modo Emilia Perez no bagulho!'
+  'Muda o formato. O prazo continua ontem.',
+  'Era só pedir o arquivo editável. Era.',
+  'O layout pode levar para o pessoal.'
 ];
-
 const IMAGE_PHRASES = [
-  'Pixel vai, pixel vem',
-  'Fatia ou empilha, tu manda',
-  'Vira retrato na parede',
-  'Espreme em pixels',
-  'Imagem é tudo, papel é nada'
+  'Print de PDF não é conversão. Isto é.',
+  'Um destino digno para esses pixels.',
+  'A imagem sai. O trauma fica.'
 ];
-
-const LOADING_MESSAGES = {
-  compress: [
-    'Mandando os megabytes fazerem dieta...',
-    'Negociando com pixels teimosos...',
-    'Colocando o PDF numa roupa mais justa...',
-    'Tirando o excesso sem chamar atenção...',
-    'Convencendo o arquivo a ocupar menos espaço...'
-  ],
-  merge: [
-    'Chamando os PDFs para uma reunião estranha...',
-    'Alinhando as páginas no pacto final...',
-    'Misturando tudo sem derrubar no chão...',
-    'Fazendo os arquivos aceitarem a convivência...',
-    'Juntando as tretas num documento só...'
-  ],
-  word: [
-    'Acordando o LibreOffice na marra...',
-    'Reescrevendo cada parágrafo na mão...',
-    'Negociando as fontes com o documento...',
-    'Trocando o crachá do arquivo...',
-    'Convertendo sem prometer milagres de formatação...'
-  ],
-  image: [
-    'Revelando as imagens no quarto escuro...',
-    'Picotando as páginas em pixels...',
-    'Escolhendo a melhor moldura...',
-    'Amassando os pixels no formato certo...',
-    'Empacotando as imagens com carinho de ódio...'
-  ],
-  text: [
-    'Arrancando cabeçalho por cabeçalho...',
-    'Jogando os números de página no lixo...',
-    'Colando as linhas de volta em parágrafos...',
-    'Forçando o robô a ler o escaneado...',
-    'Separando o miolo da casca...'
-  ],
-  excel: [
-    'Caçando tabelas escondidas...',
-    'Desenhando a grade na régua...',
-    'Convertendo R$ em número de verdade...',
-    'Emendando a tabela que fugiu pra outra página...',
-    'Brigando com célula mesclada...'
-  ]
-};
-
 const TEXT_PHRASES = [
-  'Só o miolo, sem a casca',
-  'Tchau, rodapé chato',
-  'Texto puro, sem firula',
-  'Ctrl+C sem sofrimento'
+  'Ctrl+C não deveria ser um projeto.',
+  'Texto livre da prisão de papel.',
+  'Chega de redigitar o que já foi digitado.'
 ];
-
 const EXCEL_PHRASES = [
-  'Célula por célula, no ódio',
-  'Tabela boa é tabela somável',
-  'Adeus, digitar na mão',
-  'PROCV que lute'
+  'Mandaram planilha em PDF. Respira.',
+  'Números voltando a servir para alguma coisa.',
+  'Seu Ctrl+C merece condições de trabalho.'
 ];
+const LOADING_MESSAGES = {
+  compress: ['Reduzindo o arquivo, não as expectativas…', 'O PDF está apegado aos megabytes…', 'Negociando com um formato que não negocia…'],
+  merge: ['Colocando todos na mesma página. Literalmente…', 'Organizando o condomínio de anexos…', 'O caos está ganhando um arquivo próprio…'],
+  word: ['Desfazendo a decisão de mandar isso em PDF…', 'A formatação pediu um minuto…', 'Convertendo. Milagre de layout é outro departamento…'],
+  image: ['Dando um destino aos pixels…', 'Reorganizando o álbum da burocracia…', 'O scanner fez a parte dele. Mais ou menos…'],
+  text: ['Resgatando o texto do sequestro digital…', 'Lendo o que deveria ser copiável…', 'Ctrl+C está prestes a voltar das férias…'],
+  excel: ['Tentando entender quem exportou a planilha em PDF…', 'Devolvendo os números às suas células…', 'As células mescladas estão dificultando o acordo…']
+};
 
 function rotatePhrase(el, list) {
   if (!el) return;
-  let i = Math.floor(Math.random() * list.length);
+  let i = 0;
   el.textContent = list[i];
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   setInterval(() => {
     i = (i + 1) % list.length;
     el.style.opacity = '0';
@@ -871,7 +821,7 @@ const singlePdfTools = [
 const TOOL_DEFS = {
   split: {
     title: 'Esquartejar PDF',
-    desc: 'Corta o PDF em pedaços. Jack, o Estripador de páginas. Vários pedaços chegam num .zip.',
+    desc: 'Separa as páginas. Porque ninguém merece receber 80 quando pediu duas. Os pedaços chegam num .zip.',
     button: 'ESQUARTEJAR',
     phrase: 'Picadinho de página',
     fields: [
@@ -897,7 +847,7 @@ const TOOL_DEFS = {
   },
   rotate: {
     title: 'Girar Páginas',
-    desc: 'Pro PDF que o estagiário escaneou de cabeça pra baixo. De novo.',
+    desc: 'Para ler sem inclinar a cabeça e questionar suas escolhas profissionais.',
     button: 'GIRAR',
     phrase: 'Roda, roda, roda',
     fields: [
@@ -1035,7 +985,7 @@ const TOOL_DEFS = {
   },
   flatten: {
     title: 'Achatar',
-    desc: 'Formulários e anotações viram parte da página. Ninguém mais edita nada. Nem você.',
+    desc: 'Incorpora formulários e anotações à página. O campo deixa de ser editável; o PDF não vira um cofre.',
     button: 'PASSAR O ROLO',
     phrase: 'Rolo compressor',
     fields: [],
@@ -1091,6 +1041,17 @@ const NAV = [
     ['tool:flatten', 'Achatar'], ['tool:images', 'Extrair imagens']]]
 ];
 
+const WORKSPACE_COPY = {
+  compress: ['Menos megabytes.', 'Mesma raiva.', 'O portal aceita 5 MB. Seu PDF tem 48. Vamos conversar com ele.'],
+  merge: ['Junte os arquivos.', 'O caos já veio junto.', 'Vários PDFs entram. Um só sai. Até a burocracia gosta de organização.'],
+  word: ['Troque o formato.', 'Mantenha a sanidade.', 'PDF para Word ou Word para PDF. Depende de quem complicou sua vida hoje.'],
+  image: ['Uma questão', 'de imagem.', 'De imagens para PDF ou de PDF para imagens. Chega de tirar print do print.'],
+  text: ['O texto é seu.', 'Pode levar.', 'Extraia o conteúdo. A formatação pode ficar com os problemas dela.'],
+  excel: ['Isso era', 'uma planilha.', 'Resgate as tabelas do PDF. Somar na calculadora não é um plano de carreira.'],
+  editor: ['Só um ajustezinho.', 'Disseram eles.', 'Edite textos, insira imagens e assine. Confira o resultado: este editor está em teste.'],
+  fonts: ['Dê outra cara', 'ao mesmo problema.', 'Fontes para o seu documento. Porque até uma cobrança merece boa tipografia.']
+};
+
 const PANES = ['compress', 'merge', 'word', 'image', 'text', 'excel', 'editor', 'fonts', 'tools'];
 const sideNav = document.getElementById('sideNav');
 const sidebar = document.getElementById('sidebar');
@@ -1137,6 +1098,8 @@ NAV.forEach(([group, items]) => {
   });
 });
 
+document.getElementById('toolCount').textContent = `${navButtons.size} FERRAMENTAS`;
+
 function setNavOpen(open) {
   sidebar.classList.toggle('open', open);
   navBackdrop.classList.toggle('hidden', !open);
@@ -1145,6 +1108,12 @@ function setNavOpen(open) {
 
 navToggle.addEventListener('click', () => setNavOpen(!sidebar.classList.contains('open')));
 navBackdrop.addEventListener('click', () => setNavOpen(false));
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && sidebar.classList.contains('open')) {
+    setNavOpen(false);
+    navToggle.focus();
+  }
+});
 
 function activate(key, { updateHash = true } = {}) {
   if (!navButtons.has(key)) key = 'compress';
@@ -1158,6 +1127,18 @@ function activate(key, { updateHash = true } = {}) {
   });
   if (isTool) selectTool(key.slice(5));
   navToggleLabel.textContent = navButtons.get(key).label;
+  const group = NAV.find(([, items]) => items.some(([itemKey]) => itemKey === key))[0];
+  document.getElementById('workspaceCategory').textContent = `${group} / ${navButtons.get(key).label}`;
+  const copy = WORKSPACE_COPY[key];
+  const heading = document.getElementById('workspaceTitle');
+  heading.replaceChildren();
+  if (copy) {
+    const accent = document.createElement('span');
+    accent.textContent = copy[1];
+    heading.append(copy[0], document.createElement('br'), accent);
+  } else heading.textContent = TOOL_DEFS[key.slice(5)].title;
+  document.getElementById('workspaceDescription').textContent = copy ? copy[2] : TOOL_DEFS[key.slice(5)].desc;
+  document.title = `${navButtons.get(key).label} — I HATE PDF`;
   resultEl.classList.add('hidden');
   resultEl.classList.remove('ed-result-floating');
   document.dispatchEvent(new CustomEvent('ihp:pane', { detail: pane }));

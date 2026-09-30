@@ -316,12 +316,7 @@ const TARGET_LADDER = [
   { xerox: true }
 ];
 
-function paperArgs(paperSize) {
-  if (paperSize === 'original') return [];
-  return [`-sPAPERSIZE=${paperSize}`, '-dFIXEDMEDIA', '-dPDFFitPage'];
-}
-
-function gsCompressArgs(input, output, { dpi, monoDpi, q, gray }, paperSize) {
+function gsCompressArgs(input, output, { dpi, monoDpi, q, gray }) {
   const dict = `<< /QFactor ${q} /Blend 1 /HSamples [2 1 1 2] /VSamples [2 1 1 2] >>`;
   return [
     '-sDEVICE=pdfwrite',
@@ -358,7 +353,6 @@ function gsCompressArgs(input, output, { dpi, monoDpi, q, gray }, paperSize) {
     ...(gray
       ? ['-sColorConversionStrategy=Gray', '-dProcessColorModel=/DeviceGray']
       : ['-sColorConversionStrategy=RGB', '-dProcessColorModel=/DeviceRGB']),
-    ...paperArgs(paperSize),
     `-sOutputFile=${output}`,
     '-c', `<< /ColorImageDict ${dict} /GrayImageDict ${dict} >> setdistillerparams`,
     '-f', input
@@ -393,12 +387,12 @@ async function xeroxCompress(input, output, jobDir) {
   }
 }
 
-async function compressWith(level, input, output, paperSize, jobDir) {
+async function compressWith(level, input, output, jobDir) {
   const raw = `${output}.raw.pdf`;
   if (level.xerox) {
     await xeroxCompress(input, raw, jobDir);
   } else {
-    await run('gs', gsCompressArgs(input, raw, level, paperSize), { timeout: 300000 });
+    await run('gs', gsCompressArgs(input, raw, level), { timeout: 300000 });
   }
   // Passo final sem perdas: object streams, Flate nível 9, sem metadados inúteis
   try {
@@ -442,7 +436,7 @@ app.post('/api/compress', uploadPdf.single('pdf'), job(async (req, { jobDir }) =
         if (!tried.has(i)) {
           const candidate = path.join(jobDir, `tentativa_${i}.pdf`);
           try {
-            tried.set(i, { path: candidate, size: await compressWith(ladder[i], input, candidate, paperSize, jobDir), step: i });
+            tried.set(i, { path: candidate, size: await compressWith(ladder[i], input, candidate, jobDir), step: i });
           } catch (err) {
             // Um degrau que falha (ex.: Xerox com páginas demais) não derruba a busca
             console.error(`Aviso: nível ${i + 1} falhou:`, err.message);
@@ -480,7 +474,7 @@ app.post('/api/compress', uploadPdf.single('pdf'), job(async (req, { jobDir }) =
       usedLevel = ladder[best.step].xerox ? 'modo Xerox' : `nível ${best.step + 1} de ${ladder.length}`;
     } else {
       const level = profile === 'xerox' ? { xerox: true } : { ...LEVELS[profile], gray };
-      size = await compressWith(level, input, output, paperSize, jobDir);
+      size = await compressWith(level, input, output, jobDir);
     }
 
     // Nunca devolve algo maior que o original (quando não há troca de papel
@@ -496,6 +490,15 @@ app.post('/api/compress', uploadPdf.single('pdf'), job(async (req, { jobDir }) =
         await fsp.copyFile(input, output);
       }
       alreadyOptimal = true;
+    }
+
+    // Papel padronizado SEM perder a orientação: mesmo mecanismo do "Juntar".
+    // Página paisagem vira A4 paisagem (antes o gs, com -dFIXEDMEDIA, forçava
+    // tudo em retrato e espremia o conteúdo dentro da folha em pé).
+    if (paperSize !== 'original') {
+      const sized = path.join(jobDir, 'papel.pdf');
+      await run('python3', [MERGE_SCRIPT, sized, paperSize, output], { timeout: 180000 });
+      await fsp.rename(sized, output);
     }
 
     const out = await publish(output, 'pdf');

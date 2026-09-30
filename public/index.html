@@ -3,17 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>I HATE PDF</title>
+  <title>I HATE PDF — Menos megabytes. Mesma raiva.</title>
+  <meta name="description" content="Comprima, converta, organize e edite PDFs. Ferramentas úteis para um formato que testa a sua paciência." />
   <link rel="icon" type="image/svg+xml" href="logo.svg" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <a class="skip-link" href="#mainContent">Pular para a ferramenta</a>
   <header>
     <div class="logo-wrap">
       <img src="logo.svg" alt="Coração Partido" class="logo" />
       <h1>I <span class="hate">HATE</span> PDF</h1>
     </div>
-    <p class="subtitle">Não faça amor. Faça Guerra!</p>
+    <p class="subtitle">Não faça amor. Faça guerra ao arquivo.</p>
   </header>
 
   <button type="button" id="navToggle" class="nav-toggle" aria-controls="sidebar" aria-expanded="false">
@@ -23,14 +25,22 @@
 
   <div class="layout">
   <aside id="sidebar" class="sidebar" aria-label="Ferramentas">
+    <div class="arsenal-label"><span>SEU ARSENAL</span><span id="toolCount"></span></div>
     <nav id="sideNav"></nav>
   </aside>
   <div id="navBackdrop" class="nav-backdrop hidden"></div>
 
-  <main>
+  <main id="mainContent" tabindex="-1">
+    <section class="workspace-intro" aria-labelledby="workspaceTitle">
+      <p class="eyebrow" id="workspaceCategory">ESMAGAR / COMPRIMIR</p>
+      <h2 id="workspaceTitle">Menos megabytes.<br><span>Mesma raiva.</span></h2>
+      <p id="workspaceDescription">O portal aceita 5 MB. Seu PDF tem 48. Vamos conversar com ele.</p>
+      <div class="workspace-meta"><span>SEM CADASTRO</span><span>SEM DRAMA. QUASE.</span></div>
+    </section>
 
     <div id="tab-compress" class="tab-pane">
       <section id="dropzone" class="dropzone">
+        <span class="upload-label">01 / ENTREGUE O PROBLEMA</span>
         <input type="file" id="fileInput" accept="application/pdf,.pdf" hidden />
         <div class="dz-inner">
           <svg class="dz-icon" viewBox="0 0 100 100" fill="none" aria-hidden="true">
@@ -46,40 +56,41 @@
             <path d="M38 44 L62 56 M62 44 L38 56" stroke="#ff2a4d" stroke-width="2.5" stroke-linecap="round"/>
           </svg>
           <p class="dz-text">Arraste seu PDF aqui</p>
-          <p class="dz-sub">ou <button type="button" id="browseBtn" class="link-btn">clique para definir os desafortunados</button></p>
-          <p id="fileName" class="file-name"></p>
+          <p class="dz-sub">ou <button type="button" id="browseBtn" class="link-btn">escolha o arquivo da discórdia</button></p>
+          <p id="fileName" class="file-name" aria-live="polite"></p>
+          <p class="upload-note">PDF entra. Seu limite de anexo agradece.</p>
         </div>
       </section>
 
       <section class="compression-section">
-        <h2>Escolha a compressão</h2>
+        <h2><span class="step-number">02</span> Escolha o nível de rancor</h2>
         <div class="options">
           <label class="option">
             <input type="radio" name="profile" value="cadinho" />
             <div class="option-card">
-              <h3>Apertar um Cadinho</h3>
-              <p>Reduz o tamanho com mais carinho pela qualidade.</p>
+              <span class="profile-tier">01 / LEVE</span><h3>Apertar um Cadinho</h3>
+              <p>Uma indireta nos megabytes. Preserva mais da qualidade.</p>
             </div>
           </label>
           <label class="option">
             <input type="radio" name="profile" value="marromeno" checked />
             <div class="option-card">
-              <h3>Compressão Marromeno</h3>
-              <p>Vai reduzir o tamanho e deixar aquela qualidade half-mouth.</p>
+              <span class="profile-tier">02 / EQUILIBRADA</span><h3>Compressão Marromeno</h3>
+              <p>O acordo possível entre “tá pesado” e “dá pra ler”.</p>
             </div>
           </label>
           <label class="option">
             <input type="radio" name="profile" value="braba" />
             <div class="option-card">
-              <h3>Compressão Braba das Braba</h3>
-              <p>Esmaga o PDF até o talo. Qualidade? Detalhe.</p>
+              <span class="profile-tier">03 / AGRESSIVA</span><h3>Compressão Braba</h3>
+              <p>Os pixels que lutem. Menor arquivo, menos qualidade.</p>
             </div>
           </label>
           <label class="option">
             <input type="radio" name="profile" value="xerox" />
             <div class="option-card">
-              <h3>Modo Xerox de Repartição</h3>
-              <p>Preto e branco puro, estilo cópia de cartório. Perfeito pra documento escaneado. O texto vira imagem.</p>
+              <span class="profile-tier">04 / PRETO E BRANCO</span><h3>Xerox de Repartição</h3>
+              <p>Preto e branco, com a ternura de um cartório. Ideal para escaneados; o texto vira imagem.</p>
             </div>
           </label>
         </div>
@@ -124,7 +135,7 @@
       <div class="action-wrap">
         <button id="compressBtn" class="primary-btn btn-compress" disabled>
           <span class="btn-label">ESMAGAR SEM DÓ</span>
-          <span class="btn-sub" id="compressPhrase">Espreme até o talo</span>
+          <span class="btn-sub" id="compressPhrase">O anexo precisa caber. A raiva, não.</span>
         </button>
       </div>
     </div>
@@ -186,7 +197,7 @@
       <div class="action-wrap">
         <button id="mergeBtn" class="primary-btn btn-merge" disabled>
           <span class="btn-label">FUNDIR ESSA BAGAÇA</span>
-          <span class="btn-sub" id="mergePhrase">Une os fragmentos num só</span>
+          <span class="btn-sub" id="mergePhrase">Uma reunião que finalmente junta alguma coisa.</span>
         </button>
       </div>
     </div>
@@ -199,14 +210,14 @@
             <input type="radio" name="wordDir" value="pdf2word" checked />
             <div class="option-card">
               <h3>PDF → Word</h3>
-              <p>Transforma o PDF num .docx editável (com a fidelidade que der).</p>
+              <p>Devolve o direito de editar. A formatação pode guardar rancor.</p>
             </div>
           </label>
           <label class="option">
             <input type="radio" name="wordDir" value="word2pdf" />
             <div class="option-card">
               <h3>Word → PDF</h3>
-              <p>Converte .docx, .doc, .odt, .rtf ou .txt num PDF certinho.</p>
+              <p>Converte .docx, .doc, .odt, .rtf ou .txt. Engessa com elegância.</p>
             </div>
           </label>
         </div>
@@ -234,8 +245,8 @@
 
       <div class="action-wrap">
         <button id="wordBtn" class="primary-btn btn-merge" disabled>
-          <span class="btn-label">CONVERTER O BANG</span>
-          <span class="btn-sub" id="wordPhrase">Muda de lado sem dó</span>
+          <span class="btn-label">CONVERTER ARQUIVO</span>
+          <span class="btn-sub" id="wordPhrase">Muda o formato. O prazo continua ontem.</span>
         </button>
       </div>
     </div>
@@ -308,8 +319,8 @@
 
       <div class="action-wrap">
         <button id="imageBtn" class="primary-btn btn-compress" disabled>
-          <span class="btn-label">CONVERTER ESSAS BRABA</span>
-          <span class="btn-sub" id="imagePhrase">Pixel vai, pixel vem</span>
+          <span class="btn-label">CONVERTER IMAGENS</span>
+          <span class="btn-sub" id="imagePhrase">Print de PDF não é conversão. Isto é.</span>
         </button>
       </div>
     </div>
@@ -592,11 +603,11 @@
     </section>
 
     <section id="result" class="result hidden">
-      <h2>Pronto!</h2>
+      <h2>Resolvido. Pode fechar o chamado.</h2>
       <p id="resultInfo"></p>
       <pre id="resultPreview" class="preview hidden"></pre>
       <a id="downloadBtn" class="primary-btn" href="#">BAIXAR PDF</a>
-      <button id="resetBtn" class="link-btn">Fazer outro</button>
+      <button id="resetBtn" class="link-btn">Próximo problema</button>
     </section>
 
     <section id="errorBox" class="error hidden" role="alert"></section>
@@ -604,7 +615,7 @@
   </div>
 
   <footer>
-    <p>I HATE PDF &copy; 2026 - Feito com ódio aos PDFs! E também todo o resto.</p>
+    <p><span>I HATE PDF &copy; 2026</span><span>O formato é portátil. A paciência, limitada.</span></p>
   </footer>
 
   <script src="fonts.js"></script>
