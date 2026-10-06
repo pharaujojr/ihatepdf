@@ -33,6 +33,10 @@ const UPLOAD_DIR = path.join(__dirname, 'uploads');
 const OUTPUT_DIR = path.join(__dirname, 'outputs');
 const WORK_DIR = path.join(__dirname, 'work');
 const EDITOR_DIR = path.join(__dirname, 'editor');
+// PDFs enviados um a um antes do merge: o Cloudflare barra requisições acima
+// de 100 MB, então juntar muitos arquivos numa requisição só não passa.
+const STAGE_DIR = path.join(__dirname, 'uploads', 'staged');
+const MAX_MERGE_FILES = 300;
 const EDITOR_TTL_MS = 2 * 60 * 60 * 1000;
 const TOOLS = path.join(__dirname, 'tools');
 const LANG_SCRIPT = path.join(TOOLS, 'fix_docx_lang.py');
@@ -47,6 +51,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 fs.mkdirSync(WORK_DIR, { recursive: true });
 fs.mkdirSync(EDITOR_DIR, { recursive: true });
+fs.mkdirSync(STAGE_DIR, { recursive: true });
 
 const PDF_EXT = ['.pdf'];
 const WORD_EXT = ['.doc', '.docx', '.odt', '.rtf', '.txt'];
@@ -200,7 +205,8 @@ function sweepDir(dir, maxAgeMs, filter = () => true) {
 
 function sweepAll() {
   sweepDir(OUTPUT_DIR, FILE_RETENTION_MS, (name) => name.startsWith(OUTPUT_PREFIX));
-  sweepDir(UPLOAD_DIR, STALE_WORK_MS);
+  sweepDir(UPLOAD_DIR, STALE_WORK_MS, (name) => name !== 'staged');
+  sweepDir(STAGE_DIR, STALE_WORK_MS);
   sweepDir(WORK_DIR, STALE_WORK_MS);
   sweepDir(EDITOR_DIR, EDITOR_TTL_MS);
 }
@@ -516,12 +522,53 @@ app.post('/api/compress', uploadPdf.single('pdf'), job(async (req, { jobDir }) =
 
 // --- Juntar ------------------------------------------------------------------
 
+app.post('/api/stage', uploadPdf.single('pdf'), async (req, res) => {
+  try {
+    if (!req.file) throw new UserError('Nenhum arquivo enviado.');
+    const id = newOutputId();
+    await fsp.rename(req.file.path, path.join(STAGE_DIR, `${id}.pdf`));
+    res.json({ id });
+  } catch (err) {
+    cleanupUploads(uploadedFiles(req));
+    const status = err instanceof UserError ? err.status : 500;
+    if (!(err instanceof UserError)) console.error('Erro em /api/stage:', err.message);
+    res.status(status).json({ error: err instanceof UserError ? err.message : 'Erro inesperado.' });
+  }
+});
+
+function stagedPaths(raw) {
+  let ids;
+  try {
+    ids = JSON.parse(raw);
+  } catch (_) {
+    throw new UserError('Lista de arquivos inválida.');
+  }
+  if (!Array.isArray(ids) || ids.length > MAX_MERGE_FILES ||
+      !ids.every((id) => /^[a-f0-9]{32}$/.test(String(id)))) {
+    throw new UserError('Lista de arquivos inválida.');
+  }
+  return ids.map((id) => path.join(STAGE_DIR, `${id}.pdf`));
+}
+
 app.post('/api/merge', uploadPdfs.array('pdfs', 50), job(async (req, { jobDir }) => {
   const files = req.files || [];
-  if (files.length < 2) throw new UserError('Envie pelo menos 2 PDFs para juntar.');
+  const staged = req.body.staged ? stagedPaths(req.body.staged) : [];
+  const count = staged.length || files.length;
+  try {
+    if (count < 2) throw new UserError('Envie pelo menos 2 PDFs para juntar.');
+    for (const p of staged) {
+      if (!fs.existsSync(p)) throw new UserError('Os arquivos enviados expiraram. Envie de novo.', 404);
+    }
+    return await mergeFiles(staged.length ? staged : files.map((f) => f.path), req, jobDir);
+  } finally {
+    staged.forEach((p) => fs.unlink(p, () => {}));
+  }
+}));
+
+async function mergeFiles(paths, req, jobDir) {
   const paperSize = normalizePaperSize(req.body.paperSize, 'a4');
-  const order = parseOrder(req.body.order, files.length);
-  const inputPaths = order.map((i) => files[i].path);
+  const order = parseOrder(req.body.order, paths.length);
+  const inputPaths = order.map((i) => paths[i]);
   const output = path.join(jobDir, 'juntado.pdf');
 
   // merge_pdf.py embute cada página como Form XObject no PDF de saída:
@@ -530,13 +577,13 @@ app.post('/api/merge', uploadPdfs.array('pdfs', 50), job(async (req, { jobDir })
   // (transformation matrix) na nova página, não por re-renderização.
   // "original" não está na tabela de tamanhos do script = mantém o tamanho.
   try {
-    await withSlot(() => run('python3', [MERGE_SCRIPT, output, paperSize, ...inputPaths], { timeout: 180000 }));
+    await withSlot(() => run('python3', [MERGE_SCRIPT, output, paperSize, ...inputPaths], { timeout: 600000 }));
   } catch (err) {
     throw scriptError(err, 'Falha ao juntar os PDFs. Algum deles pode estar protegido ou corrompido.');
   }
   const out = await publish(output, 'pdf');
-  return { ...out, originalName: 'juntado.pdf', paperSize, count: files.length };
-}));
+  return { ...out, originalName: 'juntado.pdf', paperSize, count: paths.length };
+}
 
 // --- Word <-> PDF --------------------------------------------------------------
 

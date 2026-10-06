@@ -412,15 +412,32 @@ mergeDropzone.addEventListener('drop', (e) => {
 mergeBtn.addEventListener('click', async () => {
   if (mergeFiles.length < 2) return;
 
-  const formData = new FormData();
-  mergeFiles.forEach(f => formData.append('pdfs', f));
-  formData.append('paperSize', mergePaperSize?.value || 'a4');
-
   startLoading('merge');
   resultEl.classList.add('hidden');
   mergeBtn.disabled = true;
 
   try {
+    // Um PDF por requisição: o proxy na frente do servidor barra corpos
+    // acima de 100 MB, então mandar tudo junto falhava com muitos arquivos.
+    const ids = new Array(mergeFiles.length);
+    let next = 0;
+    const uploadWorker = async () => {
+      while (next < mergeFiles.length) {
+        const i = next++;
+        const fd = new FormData();
+        fd.append('pdf', mergeFiles[i]);
+        try {
+          ids[i] = (await postForm('/api/stage', fd)).id;
+        } catch (err) {
+          throw new Error(`${mergeFiles[i].name}: ${err.message}`);
+        }
+      }
+    };
+    await Promise.all([uploadWorker(), uploadWorker(), uploadWorker()]);
+
+    const formData = new FormData();
+    formData.append('staged', JSON.stringify(ids));
+    formData.append('paperSize', mergePaperSize?.value || 'a4');
     const data = await postForm('/api/merge', formData);
 
     const outName = 'juntado.pdf';
